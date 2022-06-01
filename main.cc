@@ -70,32 +70,33 @@ int main(){
         int ret;
         ret = jmi::nvjmi_decoder_put_packet(jmi_ctx_, &nvpacket);
         if (ret!=jmi::NVJMI_OK){
-            std::cout<<"ret is:"<<ret<<std::endl<<std::fflush;
+            // std::cout<<"ret is:"<<ret<<std::endl<<std::fflush;
+            LogError("ret is: [%d]",ret);
             break;
         }
         // if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY)
         //     continue;
-        if(ret == jmi::NVJMI_ERROR_STOP) {
-            LogInfo("nvjmi decode error, frame callback EOF!\n");
-            break;
-        }
-        jmi::nvFrameMeta nvframe_meta;
-        ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
-        if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY){
-            std::cout<<"empty frame!!!\n";
-            continue;
-        }
-        if (ret < 0) {
-            LogInfo("now we got errors :[%d]\n",ret);
-            std::cout<< "now nvframe_meta.height is: ["<<nvframe_meta.height<<"]"<<std::endl
-            <<"nvframe_meta.width is: ["<<nvframe_meta.width<<"] \n"<<std::fflush;
-            break;
-        };
-        // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
-        unsigned char* buf=(unsigned char*)malloc(nvframe_meta.width* nvframe_meta.height*3*nvframe_meta.payload_size / nvframe_meta.height);
-        jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);   
-        free(buf);
-        LogInfo("now we get the packet size is:%d \n",packet->size);
+        // if(ret == jmi::NVJMI_ERROR_STOP) {
+        //     LogInfo("nvjmi decode error, frame callback EOF!\n");
+        //     break;
+        // }
+        // jmi::nvFrameMeta nvframe_meta;
+        // ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
+        // if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY){
+        //     std::cout<<"empty frame!!!\n";
+        //     continue;
+        // }
+        // if (ret < 0) {
+        //     LogInfo("now we got errors :[%d]\n",ret);
+        //     std::cout<< "now nvframe_meta.height is: ["<<nvframe_meta.height<<"]"<<std::endl
+        //     <<"nvframe_meta.width is: ["<<nvframe_meta.width<<"] \n"<<std::fflush;
+        //     break;
+        // };
+        // // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
+        // unsigned char* buf=(unsigned char*)malloc(nvframe_meta.width* nvframe_meta.height*3*nvframe_meta.payload_size / nvframe_meta.height);
+        // jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);   
+        // free(buf);
+        // LogInfo("now we get the packet size is:%d \n",packet->size);
         // break;
         
     }

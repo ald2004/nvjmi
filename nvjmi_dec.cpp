@@ -621,7 +621,7 @@ namespace jmi {
 
         /* Received the resolution change event, now can do query_and_set_capture. */
         if (!ctx->got_error){
-            std::cout<<"now we got error!!! \n";
+            std::cout<<"now we got error and query_and_set_capture start !!! \n";
             query_and_set_capture(ctx);
         }
         
@@ -842,14 +842,16 @@ namespace jmi {
         ctx->blocking_mode=1;
         ctx->stats=1;
         ctx->max_perf=1;
-        ctx->enable_metadata=true;
         ctx->enable_input_metadata=true;
         ctx->output_plane_mem_type = V4L2_MEMORY_MMAP;
         ctx->capture_plane_mem_type = V4L2_MEMORY_DMABUF;
         ctx->enable_metadata=true;
+        ctx->enable_metadata=false;
 
         pthread_mutex_init(&ctx->queue_lock, NULL);
         pthread_cond_init(&ctx->queue_cond, NULL);
+        //#define GOVERNOR_SYS_FILE "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+        //#define REQUIRED_GOVERNOR "performance" "schedutil"
         NvApplicationProfiler &profiler = NvApplicationProfiler::getProfilerInstance();
 
         /* Create NvVideoDecoder object for blocking or non-blocking I/O mode. */
@@ -982,11 +984,11 @@ namespace jmi {
         ctx->fd_egl_frame_map = new FdEglFrameMap;
 
         //create cuda stream for cuda converter
-        err = cudaStreamCreateWithFlags(&ctx->cuda_stream, cudaStreamNonBlocking);
-        if (err != cudaSuccess) {
-            LogError(LOG_NVJMI_DECODER "cudaStreamCreateWithFlags: CUDA Runtime API error: %d - %s\n", (int)err, cudaGetErrorString(err));
-            return nullptr;
-        }
+        // err = cudaStreamCreateWithFlags(&ctx->cuda_stream, cudaStreamNonBlocking);
+        // if (err != cudaSuccess) {
+        //     LogError(LOG_NVJMI_DECODER "cudaStreamCreateWithFlags: CUDA Runtime API error: %d - %s\n", (int)err, cudaGetErrorString(err));
+        //     return nullptr;
+        // }
 
         //create frame buffer pools
         ctx->frame_pools->set_capacity(MAX_BUFFERS);
@@ -999,9 +1001,9 @@ namespace jmi {
         std::cout<< "init ctx complete!\n";
         return ctx;
 cleanup:
-        if (ctx->blocking_mode && ctx->dec_capture_loop){
-                pthread_join(ctx->dec_capture_loop, NULL);
-            }
+        // if (ctx->blocking_mode && ctx->dec_capture_loop){
+        //         pthread_join(ctx->dec_capture_loop, NULL);
+        // }
         if (ctx->stats){
             profiler.stop();
             ctx->dec->printProfilingStats(cout);
@@ -1065,13 +1067,13 @@ cleanup:
     }
 
     JMI_API int nvjmi_decoder_put_packet(nvJmiCtx* ctx, nvPacket* packet){
-        if (ctx->eos){
-            if (ctx->capture_plane_stop) {
-                return NVJMI_ERROR_STOP;			
-			}           
+        // if (ctx->eos){
+        //     if (ctx->capture_plane_stop) {
+        //         return NVJMI_ERROR_STOP;			
+		// 	}           
 			
-			return NVJMI_ERROR_EOS;
-        }
+		// 	return NVJMI_ERROR_EOS;
+        // }
 
         int ret{};
 
@@ -1091,10 +1093,12 @@ cleanup:
         memset(planes, 0, sizeof(planes));
 
         v4l2_buf.m.planes = planes;
-        // std::cout<<"33333333333333333333333333333333333"<<std::endl;
+        v4l2_buf.index = 0;
+        // v4l2_buf.m.planes = planes;
+        v4l2_buf.m.planes[0].bytesused = nvBuffer->planes[0].bytesused;
         
         if ((ctx->index < (int)ctx->dec->output_plane.getNumBuffers())) {
-            std::cout<<"111111111111111111111111111111111111"<<std::endl;
+            // std::cout<<"111111111111111111111111111111111111"<<std::endl;
             nvBuffer = ctx->dec->output_plane.getNthBuffer(ctx->index);
         }
         else {
