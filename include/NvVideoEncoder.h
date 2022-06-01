@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -171,15 +171,15 @@ public:
      * Set the encoder level.
      *
      * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
-     * \c V4L2_CID_MPEG_VIDEO_H264_LEVEL. Must be called after setFormat on both
+     * \c V4L2_CID_MPEG_VIDEO_H264_LEVEL or #V4L2_CID_MPEG_VIDEOENC_H265_LEVEL,
+     * depending on encoder type. Must be called after setFormat on both
      * the planes and before \c requestBuffers on any of the planes.
      *
-     * @param[in] level Level to be used for encoding, one of enum
-     *                  v4l2_mpeg_video_h264_level
+     * @param[in] level Level to be used for encoding
      *
      * @return 0 for success, -1 otherwise.
      */
-    int setLevel(enum v4l2_mpeg_video_h264_level level);
+    int setLevel(uint32_t level);
 
     /**
      * Sets the encoder for maximum performance.
@@ -195,18 +195,20 @@ public:
      */
     int setMaxPerfMode(int flag);
     /**
-     * Sets the encoder constant qp.
+     * Sets constant QP for encoder.
      *
      * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
-     * \c V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE, V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP,
-     * \c and V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP. Must be called after setFormat on both
+     * \c V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE to enable/disable rate control.
+     * If the value false is given, it disables RC and set constant QP parameters.
+     * Must be called after setFormat on both
      * the planes and before \c requestBuffers on any of the planes.
      *
-     * @param[in] qp_value Qp value
+     * @param[in] enabled_rc Boolean value indicating whether to enable/disable
+     *                    the control.
      *
      * @return 0 for success, -1 otherwise.
      */
-    int setConstantQp(int qp_value);
+    int setConstantQp(bool enabled_rc);
 
     /**
      * Sets the encoder rate control mode.
@@ -370,6 +372,47 @@ public:
     int enableExternalRC(v4l2_enc_enable_ext_rate_ctr &params);
 
     /**
+     * Enable AV1 Multi-tile configuration
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_AV1_TILE_CONFIGURATION. Must be called after
+     * setFormat on both the planes and before \c requestBuffers on any of the
+     * planes.
+     *
+     * @param[in] params Parameters to be applied, structure of
+     *                   type ##v4l2_enc_av1_tile_config
+     * @return 0 for success, -1 otherwise.
+     */
+    int enableAV1Tile(v4l2_enc_av1_tile_config &params);
+
+    /**
+     * Enable AV1 variance based SSIM RDO.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_AV1_ENABLE_SSIMRDO. Must be called after
+     * setFormat on both the planes.
+     *
+     * @param[in] enabled Boolean value indicating whether to enable/disable
+     *                    the control.
+     * @return 0 for success, -1 otherwise.
+     */
+    int setAV1SsimRdo(bool enabled);
+
+    /**
+     * Disable AV1 CDF update in the symbol decoding process.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_AV1_DISABLE_CDF_UPDATE. The value true
+     * disables the CDF update. Must be called after setFormat on both
+     * the planes.
+     *
+     * @param[in] disabled Boolean value indicating whether to enable/disable
+     *                    the control.
+     * @return 0 for success, -1 otherwise.
+     */
+    int setAV1DisableCDFUpdate(bool disabled);
+
+    /**
      * Set input Metadata parameters for the next buffer which will
      * be queued on output plane with index \a buffer_index
      *
@@ -447,6 +490,32 @@ public:
     int setInsertSpsPpsAtIdrEnabled(bool enabled);
 
     /**
+     * Enables/disables CABAC entropy encoding for H264.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE. Must be called after
+     * setFormat on both the planes.
+     *
+     * @param[in] enabled Boolean value indicating whether to enable/disable
+     *                    the control.
+     * @return 0 for success, -1 otherwise.
+     */
+    int setCABAC(bool enabled);
+
+    /**
+     * Enables/disables Slice level encoding for H264 / HEVC.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_ENABLE_SLICE_LEVEL_ENCODE. Must be called after
+     * setFormat on both the planes.
+     *
+     * @param[in] enabled Boolean value indicating whether to enable/disable
+     *                    the control.
+     * @return 0 for success, -1 otherwise.
+     */
+    int setSliceLevelEncode(bool enabled);
+
+    /**
      * Enables video encoder output motion vector metadata reporting.
      *
      * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
@@ -512,10 +581,36 @@ public:
             uint32_t MaxQpP, uint32_t MinQpB, uint32_t MaxQpB);
 
     /**
+     * Sets Sample Aspect Ratio width for VUI encoding.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with control Id
+     * \c V4L2_CID_MPEG_VIDEO_H264_VUI_EXT_SAR_WIDTH or
+     * #V4L2_CID_MPEG_VIDEOENC_H265_VUI_EXT_SAR_WIDTH, depending on the
+     * encoder type. Must be called after setFormat on both the planes.
+     *
+     * @param[in] sar_width SAR for width.
+     * @returns 0 for success, -1 otherwise.
+     */
+    int setSampleAspectRatioWidth(uint32_t sar_width);
+
+    /**
+     * Sets Sample Aspect Ratio height for VUI encoding.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with control Id
+     * \c V4L2_CID_MPEG_VIDEO_H264_VUI_EXT_SAR_HEIGHT or
+     * #V4L2_CID_MPEG_VIDEOENC_H265_VUI_EXT_SAR_HEIGHT, depending on the
+     * encoder type. Must be called after setFormat on both the planes.
+     *
+     * @param[in] sar_height SAR for height.
+     * @returns 0 for success, -1 otherwise.
+     */
+    int setSampleAspectRatioHeight(uint32_t sar_height);
+
+    /**
      * Enables/disables insert VUI.
      *
      * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
-     * @c V4L2_CID_MPEG_VIDEO_H264_VUI_SAR_ENABLE. Must be called after
+     * @c V4L2_CID_MPEG_VIDEOENC_INSERT_VUI. Must be called after
      * setFormat on both the planes.
      *
      * @param[in] enabled Boolean value indicating whether to enable/disable
@@ -562,6 +657,74 @@ public:
      * @return 0 for success, -1 otherwise.
      */
     int setAlliFramesEncode(bool enabled);
+
+    /**
+     * Sets the encoder Picture Order Control type.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_POC_TYPE. Must be called after setFormat on both
+     * the planes and before \c requestBuffers on any of the planes.
+     *
+     * @param[in] pocType Set the Picture Order Count for the encoder.
+     *
+     * @return 0 for success, -1 otherwise.
+     */
+    int setPocType(uint32_t pocType);
+
+    /**
+     * Sets the initial QP for I/P/B frames.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with control Id
+     * %V4L2_CID_MPEG_VIDEOENC_INIT_FRAME_QP. Must be called after
+     * setFormat on both the planes.
+     *
+     *
+     * @param[in] IinitQP Qp Value for I frame.
+     * @param[in] PinitQP Qp Value for P frame.
+     * @param[in] BinitQP Qp Value for B frame.
+     *
+     * @return 0 for success, -1 otherwise.
+     */
+    int setInitQP(uint32_t IinitQP, uint32_t PinitQP, uint32_t BinitQP);
+
+    /**
+     * Sets the number of frames to encode.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEO_FRAMES_TO_ENCODE. Must be called after
+     * setFormat on both the planes.
+     *
+     * @param[in] framesToEncode Set the number of frames to encode.
+     *
+     * @return 0 for success, -1 otherwise.
+     */
+    int setFramesToEncode(uint32_t framesToEncode);
+
+    /**
+     * Sets the H.265 encoder Chroma Format IDC.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_H265_CHROMA_FACTOR_IDC. Must be called after setFormat on both
+     * the planes and before \c requestBuffers on any of the planes.
+     *
+     * @crfactor[in] value Set the chroma_factor_idc for the encoder.
+     *
+     * @return 0 for success, -1 otherwise.
+     */
+    int setChromaFactorIDC(uint8_t crfactor);
+
+    /**
+     * Sets the lossless encoding for H.264/H.265.
+     *
+     * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
+     * #V4L2_CID_MPEG_VIDEOENC_ENABLE_LOSSLESS. Must be called after setFormat on both
+     * the planes and before \c requestBuffers on any of the planes.
+     *
+     * @enabled[in] value Boolean value indicating whether to enable/disable
+     *                    the control.
+     * @return 0 for success, -1 otherwise.
+     */
+    int setLossless(bool enabled);
 
     /**
      * Issues Poll on the device which blocks until :

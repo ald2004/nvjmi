@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2017, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2022, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +34,7 @@
 #include <libv4l2.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
-#include "nvbuf_utils.h"
+#include "nvbufsurface.h"
 
 #define CHECK_V4L2_RETURN(ret, str)              \
     if (ret < 0) {                               \
@@ -272,17 +272,17 @@ NvV4l2ElementPlane::mapOutputBuffers(struct v4l2_buffer &v4l2_buf, int dmabuff_f
 {
     int ret;
     uint32_t i;
-    NvBufferParams params;
     pthread_mutex_lock(&plane_lock);
     unsigned char *data;
+    NvBufSurface *nvbuf_surf = 0;
 
     switch (memory_type)
     {
         case V4L2_MEMORY_DMABUF:
-            ret = NvBufferGetParams(dmabuff_fd, &params);
+            ret = NvBufSurfaceFromFd (dmabuff_fd, (void**)(&nvbuf_surf));
             if(ret < 0)
             {
-                PLANE_SYS_ERROR_MSG("Error: NvBufferGetParams Failed\n");
+                PLANE_SYS_ERROR_MSG("Error: NvBufSurfaceFromFd Failed\n");
                 pthread_mutex_unlock(&plane_lock);
                 return ret;
             }
@@ -290,8 +290,9 @@ NvV4l2ElementPlane::mapOutputBuffers(struct v4l2_buffer &v4l2_buf, int dmabuff_f
             {
                 buffers[v4l2_buf.index]->planes[i].fd = dmabuff_fd;
                 v4l2_buf.m.planes[i].m.fd = buffers[v4l2_buf.index]->planes[i].fd;
-                buffers[v4l2_buf.index]->planes[i].mem_offset = params.offset[i];
-                ret = NvBufferMemMap (dmabuff_fd,i,NvBufferMem_Read_Write, (void **)&data);
+                buffers[v4l2_buf.index]->planes[i].mem_offset = nvbuf_surf->surfaceList[0].planeParams.offset[i];
+
+                ret = NvBufSurfaceMap(nvbuf_surf, 0, i, NVBUF_MAP_READ_WRITE);
                 if (ret < 0)
                 {
                     is_in_error = 1;
@@ -299,6 +300,7 @@ NvV4l2ElementPlane::mapOutputBuffers(struct v4l2_buffer &v4l2_buf, int dmabuff_f
                     pthread_mutex_unlock(&plane_lock);
                     return ret;
                 }
+                data = (unsigned char *)nvbuf_surf->surfaceList[0].mappedAddr.addr[i];
                 buffers[v4l2_buf.index]->planes[i].data=data;
             }
             break;
@@ -320,6 +322,7 @@ NvV4l2ElementPlane::unmapOutputBuffers(int index, int dmabuff_fd)
 {
     int ret = 0;
     uint32_t i;
+    NvBufSurface *nvbuf_surf = 0;
     pthread_mutex_lock(&plane_lock);
 
     switch (memory_type)
@@ -327,7 +330,16 @@ NvV4l2ElementPlane::unmapOutputBuffers(int index, int dmabuff_fd)
         case V4L2_MEMORY_DMABUF:
             for (i = 0; i < n_planes; i++)
             {
-                ret = NvBufferMemUnMap (dmabuff_fd, i, (void **)&buffers[index]->planes[i].data);
+                ret = NvBufSurfaceFromFd (dmabuff_fd, (void**)(&nvbuf_surf));
+                if (ret < 0)
+                {
+                    is_in_error = 1;
+                    PLANE_SYS_ERROR_MSG("Error while NvBufSurfaceFromFd");
+                    pthread_mutex_unlock(&plane_lock);
+                    return ret;
+                }
+
+                ret = NvBufSurfaceUnMap(nvbuf_surf, 0, i);
                 if (ret < 0)
                 {
                     is_in_error = 1;
@@ -626,7 +638,7 @@ NvV4l2ElementPlane::queryBuffer(uint32_t i)
     {
         PLANE_DEBUG_MSG("QueryBuf for " << i << "th buffer successful");
 
-        for (j = 0; j < v4l2_buf.length; j++)
+        for (j = 0; j < n_planes; j++)
         {
             buffers[i]->planes[j].length = v4l2_buf.m.planes[j].length;
             buffers[i]->planes[j].mem_offset =

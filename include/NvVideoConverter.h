@@ -182,7 +182,7 @@ public:
      * Sets the YUV Rescale method to use.
      *
      * Calls the VIDIOC_S_EXT_CTRLS IOCTL internally with Control ID
-     * #V4L2_CID_VIDEO_CONVERT_YUV_RESCALE_METHOD. Must be called before
+     * \#V4L2_CID_VIDEO_CONVERT_YUV_RESCALE_METHOD. Must be called before
      * setFormat() on any of the planes.
      *
      * @param[in] method Type of YUV Rescale method to use, one of enum

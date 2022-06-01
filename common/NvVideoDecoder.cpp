@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -94,9 +94,10 @@ NvVideoDecoder::setCapturePlaneFormat(uint32_t pixfmt, uint32_t width,
     uint32_t num_bufferplanes;
     NvBuffer::NvBufferPlaneFormat planefmts[MAX_PLANES];
 
-    if (! ((pixfmt == V4L2_PIX_FMT_NV12M) || (pixfmt == V4L2_PIX_FMT_P010M)))
+    if (! ((pixfmt == V4L2_PIX_FMT_NV12M) || (pixfmt == V4L2_PIX_FMT_P010M) || (pixfmt == V4L2_PIX_FMT_YUV422M) ||
+           (pixfmt == V4L2_PIX_FMT_NV24M) || (pixfmt == V4L2_PIX_FMT_NV24_10LE)))
     {
-        COMP_ERROR_MSG("Only V4L2_PIX_FMT_NV12M or V4L2_PIX_FMT_P010M is supported");
+        COMP_ERROR_MSG("Only NV12M, P010M, YUV422M, NV24M and NV24_10LE is supported");
         return -1;
     }
 
@@ -128,8 +129,10 @@ NvVideoDecoder::setOutputPlaneFormat(uint32_t pixfmt, uint32_t sizeimage)
         case V4L2_PIX_FMT_H265:
         case V4L2_PIX_FMT_VP8:
         case V4L2_PIX_FMT_VP9:
+        case V4L2_PIX_FMT_AV1:
         case V4L2_PIX_FMT_MPEG2:
         case V4L2_PIX_FMT_MPEG4:
+        case V4L2_PIX_FMT_MJPEG:
             output_plane_pixfmt = pixfmt;
             break;
         default:
@@ -320,6 +323,25 @@ NvVideoDecoder::getInputMetadata(uint32_t buffer_index,
 
     CHECK_V4L2_RETURN(getExtControls(ctrls),
             "Getting decoder input metadata for buffer " << buffer_index);
+}
+
+int
+NvVideoDecoder::getSAR(uint32_t &sar_width, uint32_t &sar_height)
+{
+    struct v4l2_ext_control controls[2];
+    struct v4l2_ext_controls ctrls;
+
+    ctrls.count = 2;
+    ctrls.controls = controls;
+
+    controls[0].id = V4L2_CID_MPEG_VIDEODEC_SAR_WIDTH;
+    controls[0].string = (char *)&sar_width;
+
+    controls[1].id = V4L2_CID_MPEG_VIDEODEC_SAR_HEIGHT;
+    controls[1].string = (char *)&sar_height;
+
+    CHECK_V4L2_RETURN(getExtControls(ctrls),
+            "Getting decoder SAR width and height");
 }
 
 int

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2016-2021, NVIDIA CORPORATION.  All rights reserved.
  *
  * NVIDIA Corporation and its licensors retain all intellectual property
  * and proprietary rights in and to this software, related documentation
@@ -33,9 +33,10 @@ extern "C"
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <errno.h>
+#include <stdbool.h>
 
 /**
- * Defines the maximum number of planes for video frame.
+ * Defines the maximum number of planes for a video frame.
  */
 #define MAX_NUM_PLANES 4
 
@@ -45,15 +46,46 @@ extern "C"
 #define MAX_COMPOSITE_FRAME 16
 
 /**
+ * Defines the default values for chroma subsampling.
+ * The default value matches JPEG/MPEG use cases.
+ */
+#define NVBUF_CHROMA_SUBSAMPLING_HORIZ_DEFAULT 0
+#define NVBUF_CHROMA_SUBSAMPLING_VERT_DEFAULT 1
+
+/**
+ * Defines the maximum number of sync object parameters.
+ */
+#define NVBUF_MAX_SYNCOBJ_PARAMS 5
+
+/**
+ * Use this value to represent an infinite wait interval.
+ * A value of zero should not be interpreted as infinite,
+ * it should be interpreted as "time out immediately" and
+ * simply check whether the event has already happened.
+ */
+#define NVBUFFER_SYNCPOINT_WAIT_INFINITE 0xFFFFFFFF
+
+/**
  * Defines Payload types for NvBuffer.
  */
 typedef enum
 {
-  /** buffer payload with HW memory handle for set of planes. */
+  /** buffer payload with hardware memory handle for set of planes. */
   NvBufferPayload_SurfArray,
-  /** buffer payload with HW memory handle for specific memory size. */
+  /** buffer payload with hardware memory handle for specific memory size. */
   NvBufferPayload_MemHandle,
 } NvBufferPayloadType;
+
+/**
+ * Defines display scan formats for NvBuffer video planes.
+ */
+typedef enum
+{
+  /** Progessive scan formats. */
+  NvBufferDisplayScanFormat_Progressive = 0,
+  /** Interlaced scan formats. */
+  NvBufferDisplayScanFormat_Interlaced,
+} NvBufferDisplayScanFormat;
 
 /**
  * Defines Layout formats for NvBuffer video planes.
@@ -80,7 +112,9 @@ typedef enum
 } NvBufferMemFlags;
 
 /**
- * Defines tags to associate, while allocation of NvBuffer.
+ * Defines tags that identify the components requesting a memory allocation.
+ * The tags can be used later to identify the total memory allocated to
+ * particular types of components.
  */
 typedef enum
 {
@@ -90,6 +124,8 @@ typedef enum
   NvBufferTag_CAMERA          = 0x200,
   /** tag for Jpeg Encoder/Decoder. */
   NvBufferTag_JPEG            = 0x1500,
+  /** tag for VPR Buffers. */
+  NvBufferTag_PROTECTED       = 0x1504,
   /** tag for H264/H265 Video Encoder. */
   NvBufferTag_VIDEO_ENC       = 0x1200,
   /** tag for H264/H265/VP9 Video Decoder. */
@@ -107,6 +143,8 @@ typedef enum
   NvBufferColorFormat_YUV420,
   /** BT.601 colorspace - YUV420 multi-planar. */
   NvBufferColorFormat_YVU420,
+  /** BT.601 colorspace - YUV422 multi-planar. */
+  NvBufferColorFormat_YUV422,
   /** BT.601 colorspace - YUV420 ER multi-planar. */
   NvBufferColorFormat_YUV420_ER,
   /** BT.601 colorspace - YVU420 ER multi-planar. */
@@ -143,10 +181,18 @@ typedef enum
   NvBufferColorFormat_ARGB32,
   /** BT.601 colorspace - Y/CbCr 4:2:0 10-bit multi-planar. */
   NvBufferColorFormat_NV12_10LE,
+  /** BT.709 colorspace - Y/CbCr 4:2:0 10-bit multi-planar. */
+  NvBufferColorFormat_NV12_10LE_709,
+  /** BT.709_ER colorspace - Y/CbCr 4:2:0 10-bit multi-planar. */
+  NvBufferColorFormat_NV12_10LE_709_ER,
+  /** BT.2020 colorspace - Y/CbCr 4:2:0 10-bit multi-planar. */
+  NvBufferColorFormat_NV12_10LE_2020,
   /** BT.601 colorspace - Y/CrCb 4:2:0 10-bit multi-planar. */
   NvBufferColorFormat_NV21_10LE,
   /** BT.601 colorspace - Y/CbCr 4:2:0 12-bit multi-planar. */
   NvBufferColorFormat_NV12_12LE,
+  /** BT.2020 colorspace - Y/CbCr 4:2:0 12-bit multi-planar. */
+  NvBufferColorFormat_NV12_12LE_2020,
   /** BT.601 colorspace - Y/CrCb 4:2:0 12-bit multi-planar. */
   NvBufferColorFormat_NV21_12LE,
   /** BT.709 colorspace - YUV420 multi-planar. */
@@ -161,14 +207,50 @@ typedef enum
   NvBufferColorFormat_YUV420_2020,
   /** BT.2020 colorspace - Y/CbCr 4:2:0 multi-planar. */
   NvBufferColorFormat_NV12_2020,
+  /** BT.601 colorspace - YUV444 multi-planar. */
+  NvBufferColorFormat_YUV444,
   /** Optical flow */
   NvBufferColorFormat_SignedR16G16,
   /** Optical flow SAD calculation Buffer format */
   NvBufferColorFormat_A32,
-  /** BT.601 colorspace - YUV444 multi-planar. */
-  NvBufferColorFormat_YUV444,
   /** 8-bit grayscale. */
   NvBufferColorFormat_GRAY8,
+  /** BT.601 colorspace - Y/CbCr 4:2:2 multi-planar. */
+  NvBufferColorFormat_NV16,
+    /** BT.601 colorspace - Y/CbCr 4:2:2 10-bit semi-planar. */
+  NvBufferColorFormat_NV16_10LE,
+  /** BT.601 colorspace - Y/CbCr 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24,
+  /** BT.601 colorspace - Y/CrCb 4:4:4 10-bit multi-planar. */
+  NvBufferColorFormat_NV24_10LE,
+  /** BT.601_ER colorspace - Y/CbCr 4:2:2 multi-planar. */
+  NvBufferColorFormat_NV16_ER,
+  /** BT.601_ER colorspace - Y/CbCr 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_ER,
+  /** BT.709 colorspace - Y/CbCr 4:2:2 multi-planar. */
+  NvBufferColorFormat_NV16_709,
+  /** BT.709 colorspace - Y/CbCr 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_709,
+  /** BT.709_ER colorspace - Y/CbCr 4:2:2 multi-planar. */
+  NvBufferColorFormat_NV16_709_ER,
+  /** BT.709_ER colorspace - Y/CbCr 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_709_ER,
+  /** BT.709 colorspace - Y/CbCr 10 bit 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_10LE_709,
+  /** BT.709 ER colorspace - Y/CbCr 10 bit 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_10LE_709_ER,
+  /** BT.2020 colorspace - Y/CbCr 10 bit 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_10LE_2020,
+  /** BT.2020 colorspace - Y/CbCr 12 bit 4:4:4 multi-planar. */
+  NvBufferColorFormat_NV24_12LE_2020,
+  /** Non-linear RGB BT.709 colorspace - RGBA-10-10-10-2 planar. */
+  NvBufferColorFormat_RGBA_10_10_10_2_709,
+  /** Non-linear RGB BT.2020 colorspace - RGBA-10-10-10-2 planar. */
+  NvBufferColorFormat_RGBA_10_10_10_2_2020,
+  /** Non-linear RGB BT.709 colorspace - BGRA-10-10-10-2 planar. */
+  NvBufferColorFormat_BGRA_10_10_10_2_709,
+  /** Non-linear RGB BT.2020 colorspace - BGRA-10-10-10-2 planar. */
+  NvBufferColorFormat_BGRA_10_10_10_2_2020,
   /** Invalid color format. */
   NvBufferColorFormat_Invalid,
 } NvBufferColorFormat;
@@ -180,11 +262,11 @@ typedef enum
 {
   /** Video flip none. */
   NvBufferTransform_None,
-  /** Video flip rotate 90 degree clockwise. */
+  /** Video flip rotate 90 degree counter-clockwise. */
   NvBufferTransform_Rotate90,
-  /** Video flip rotate 180 degree clockwise. */
+  /** Video flip rotate 180 degree. */
   NvBufferTransform_Rotate180,
-  /** Video flip rotate 270 degree clockwise. */
+  /** Video flip rotate 270 degree counter-clockwise. */
   NvBufferTransform_Rotate270,
   /** Video flip with respect to X-axis. */
   NvBufferTransform_FlipX,
@@ -237,7 +319,31 @@ typedef enum {
   NVBUFFER_COMPOSITE  = 1,
   /** flag to set for blending. */
   NVBUFFER_BLEND      = 1 << 1,
+  /** composition flag to set filter type. */
+  NVBUFFER_COMPOSITE_FILTER  = 1 << 2,
 } NvBufferComposite_Flag;
+
+/**
+ * Holds parameters for buffer sync point object.
+ * sync object params is simply a data structure containing [sync point ID,value] pair.
+ * This can be used by clients to describe an event that might want to wait for.
+ */
+typedef struct _NvBufferSyncObjParams
+{
+  uint32_t syncpointID;
+  uint32_t value;
+}NvBufferSyncObjParams;
+
+/**
+ * buffer sync point object.
+ */
+typedef struct _NvBufferSyncObjRec
+{
+  NvBufferSyncObjParams insyncobj[NVBUF_MAX_SYNCOBJ_PARAMS];
+  uint32_t num_insyncobj;
+  NvBufferSyncObjParams outsyncobj;
+  uint32_t use_outsyncobj;
+}NvBufferSyncObj;
 
 /**
  * Holds composition background r,g,b colors.
@@ -276,6 +382,22 @@ typedef struct
 typedef struct _NvBufferSession * NvBufferSession;
 
 /**
+ * Holds Chroma Subsampling parameters.
+ */
+typedef struct _NvBufferChromaSubSamplingParams
+{
+  /** location settings */
+  uint8_t chromaLocHoriz;
+  uint8_t chromaLocVert;
+}NvBufferChromaSubsamplingParams;
+
+#define NVBUF_CHROMA_SUBSAMPLING_PARAMS_DEFAULT \
+  { \
+    NVBUF_CHROMA_SUBSAMPLING_HORIZ_DEFAULT, \
+    NVBUF_CHROMA_SUBSAMPLING_VERT_DEFAULT \
+  }
+
+/**
  * Holds the input parameters for hardware buffer creation.
  */
 typedef struct _NvBufferCreateParams
@@ -301,7 +423,7 @@ typedef struct _NvBufferCreateParams
  */
 typedef struct _NvBufferParams
 {
-  /** dmabuf_fd of hardware buffer. */
+  /** Holds the DMABUF FD of the hardware buffer. */
   uint32_t dmabuf_fd;
   /** pointer to hardware buffer memory. */
   void *nv_buffer;
@@ -330,6 +452,41 @@ typedef struct _NvBufferParams
 }NvBufferParams;
 
 /**
+ * Holds extended parameters for a hardware buffer.
+ */
+typedef struct _NvBufferParamsEx
+{
+  /** nvbuffer basic parameters. */
+  NvBufferParams params;
+  /** offset in bytes from the start of the buffer to the first valid byte.
+      (Applicale for NvBufferPayload_MemHandle) */
+  int32_t startofvaliddata;
+  /** size of the valid data from the first to the last valid byte.
+      (Applicale for NvBufferPayload_MemHandle) */
+  int32_t sizeofvaliddatainbytes;
+  /** display scan format - progressive/interlaced. */
+  NvBufferDisplayScanFormat scanformat[MAX_NUM_PLANES];
+  /** offset of the second field for interlaced buffer. */
+  uint32_t secondfieldoffset[MAX_NUM_PLANES];
+  /** block height of the planes for blockLinear layout hardware buffer. */
+  uint32_t blockheightlog2[MAX_NUM_PLANES];
+  /** physical address of allocated planes. */
+  uint32_t physicaladdress[MAX_NUM_PLANES];
+  /** flags associated with planes */
+  uint64_t flags[MAX_NUM_PLANES];
+  /** metadata associated with the hardware buffer. */
+  void *payloadmetaInfo;
+  /** chroma subsampling parameters */
+  NvBufferChromaSubsamplingParams chromaSubsampling;
+  /** get buffer vpr information. */
+  bool is_protected;
+  /** buffer sync point object parameters */
+  NvBufferSyncObj syncobj;
+  /** reserved field. */
+  void *reserved;
+}NvBufferParamsEx;
+
+/**
  * Holds parameters related to compositing/blending.
  */
 typedef struct _NvBufferCompositeParams
@@ -338,6 +495,8 @@ typedef struct _NvBufferCompositeParams
   uint32_t composite_flag;
   /** number of the input buffers to be composited. */
   uint32_t input_buf_count;
+  /** filters to use for composition. */
+  NvBufferTransform_Filter composite_filter[MAX_COMPOSITE_FRAME];
   /** alpha values of input buffers for the blending. */
   float dst_comp_rect_alpha[MAX_COMPOSITE_FRAME];
   /** source rectangle coordinates of input buffers for composition. */
@@ -373,56 +532,92 @@ typedef struct _NvBufferTransformParams
 
 
 /**
-* This method can be used to get HW Buffer struct size.
+* This method can be used to wait on sync point ID.
 *
-* @returns HW Buffer struct size.
+* @param[in] syncobj_params  sync point object parameters.
+* @param[in] timeout         sync point wait timeout value.
+*
+* @returns 0 for success, -1 for failure
+*/
+int NvBufferSyncObjWait (NvBufferSyncObjParams *syncobj_params, unsigned int timeout);
+
+/**
+* This method can be used to get hardware Buffer struct size.
+*
+* @returns hardware Buffer struct size.
 */
 int NvBufferGetSize (void);
 
 /**
-* Creates an `EGLImage` instance from `dmabuf-fd`.
+* Creates an instance of EGLImage from a DMABUF FD.
 *
-* @param[in] display `EGLDisplay` object used during the creation of `EGLImage`.
-*                    If NULL, the nvbuf_utils API uses its own EGLDisplay instance.
-* @param[in] dmabuf_fd `DMABUF FD` of buffer from which `EGLImage` to be created.
+* @param[in] display    An EGLDisplay object used during the creation
+*                       of the EGLImage. If NULL, nvbuf_utils() uses
+*                       its own instance of EGLDisplay.
+* @param[in] dmabuf_fd  DMABUF FD of the buffer from which the EGLImage
+*                       is to be created.
 *
 * @returns `EGLImageKHR` for success, `NULL` for failure
 */
 EGLImageKHR NvEGLImageFromFd (EGLDisplay display, int dmabuf_fd);
 
 /**
-* Destroys an `EGLImage` object.
-
-* @param[in] display `EGLDisplay` object used to destroy `EGLImage`.
-*                    If NULL, the nvbuf_utils API uses its own EGLDisplay instance.
-* @param[in] eglImage `EGLImageKHR` object to be destroyed.
+* Destroys an EGLImage object.
+*
+* @param[in] display    An EGLDisplay object used to destroy the EGLImage.
+*                       If NULL, nvbuf_utils() uses its own instance of
+*                       EGLDisplay.
+* @param[in] eglImage   The EGLImageKHR object to be destroyed.
 *
 * @returns 0 for success, -1 for failure
 */
 int NvDestroyEGLImage (EGLDisplay display, EGLImageKHR eglImage);
 
 /**
- * Allocates a HW buffer (deprecated).
- * @deprecated Instead use NvBufferCreateEx().
- * @param[out] dmabuf_fd Returns `dmabuf_fd` of hardware buffer.
- * @param[in] width Hardware buffer width, in bytes.
- * @param[in] height Hardware buffer height, in bytes.
- * @param[in] layout Layout of buffer.
- * @param[in] colorFormat The `colorFormat` of buffer.
+ * Allocates a hardware buffer (deprecated).
  *
- * @returns 0 for success, -1 for failure
+ * @deprecated Use NvBufferCreateEx() instead.
+ * @param[out] dmabuf_fd    Returns the DMABUF FD of the hardware buffer.
+ * @param[in]  width        Buffer width, in bytes.
+ * @param[in]  height       Buffer height, in bytes.
+ * @param[in]  layout       Layout of the buffer.
+ * @param[in]  colorFormat  Color format of the buffer.
+ *
+ * @return 0 if successful, or -1 otherwise.
  */
 int NvBufferCreate (int *dmabuf_fd, int width, int height,
     NvBufferLayout layout, NvBufferColorFormat colorFormat);
 
 /**
- * Allocates a HW buffer.
- * @param[out] dmabuf_fd Returns `dmabuf_fd` of hardware buffer.
- * @param[in] input_params Input parameters for hardware buffer creation.
+ * Allocates a hardware buffer.
+ *
+ * @param[out] dmabuf_fd    Returns the DMABUF FD of the hardware buffer.
+ * @param[in]  input_params Input parameters for hardware buffer creation.
  *
  * @returns 0 for success, -1 for failure
  */
 int NvBufferCreateEx (int *dmabuf_fd, NvBufferCreateParams *input_params);
+
+/**
+ * Allocates a hardware buffer for interlace scan format.
+ *
+ * @param[out] dmabuf_fd    Returns the DMABUF FD of the hardware buffer.
+ * @param[in]  input_params Input parameters for hardware buffer creation.
+ *
+ * @returns 0 for success, -1 for failure
+ */
+int NvBufferCreateInterlace (int *dmabuf_fd, NvBufferCreateParams *input_params);
+
+/**
+ * Allocates a hardware buffer with a given chroma subsampling location.
+ *
+ * @param[in] dmabuf_fd         DMABUF FD of the buffer.
+ * @param[in] input_params      Input parameters for hardware buffer creation.
+ * @param[in] chromaSubsampling Chroma location parameters.
+ *
+ * @returns 0 for success, -1 for failure
+ */
+int NvBufferCreateWithChromaLoc (int *dmabuf_fd, NvBufferCreateParams *input_params, NvBufferChromaSubsamplingParams *chromaSubsampling);
 
 /**
  * Gets buffer parameters.
@@ -434,7 +629,16 @@ int NvBufferCreateEx (int *dmabuf_fd, NvBufferCreateParams *input_params);
 int NvBufferGetParams (int dmabuf_fd, NvBufferParams *params);
 
 /**
-* Destroys a HW buffer.
+ * Gets buffer extended parameters.
+ * @param[in] dmabuf_fd `DMABUF FD` of buffer.
+ * @param[out] exparams A pointer to the structure to fill with extended parameters.
+ *
+ * @returns 0 for success, -1 for failure.
+ */
+int NvBufferGetParamsEx (int dmabuf_fd, NvBufferParamsEx *exparams);
+
+/**
+* Destroys a hardware buffer.
 * @param[in] dmabuf_fd Specifies the `dmabuf_fd` `hw_buffer` to destroy.
 *
 * @returns 0 for success, -1 for failure.
@@ -460,7 +664,7 @@ int ExtractFdFromNvBuffer (void *nvbuf, int *dmabuf_fd);
 int NvReleaseFd (int dmabuf_fd);
 
 /**
-* Syncs the HW memory cache for the CPU.
+* Syncs the hardware memory cache for the CPU.
 *
 * \sa NvBufferMemMap for the purpose of the function
 *
@@ -469,12 +673,25 @@ int NvReleaseFd (int dmabuf_fd);
 * @param[in] pVirtAddr Virtual Address pointer of the memory-mapped plane.
 *
 * @returns 0 for success, -1 for failure.
-
 */
 int NvBufferMemSyncForCpu (int dmabuf_fd, unsigned int plane, void **pVirtAddr);
 
 /**
-* Syncs the HW memory cache sync for the device.
+* Syncs the hardware memory cache for the CPU, API to be used for another process.
+*
+* \sa NvBufferMemMapEx for the purpose of the function
+*
+* @param[in] dmabuf_fd DMABUF FD of buffer.
+* @param[in] exparams extended parameters for a hardware buffer.
+* @param[in] plane video frame plane.
+* @param[in] pVirtAddr Virtual Address pointer of the memory-mapped plane.
+*
+* @returns 0 for success, -1 for failure.
+*/
+int NvBufferMemSyncForCpuEx (int dmabuf_fd, NvBufferParamsEx *exparams, unsigned int plane, void **pVirtAddr);
+
+/**
+* Syncs the hardware memory cache for the device.
 *
 * \sa NvBufferMemMap for the purpose of the function
 *
@@ -485,6 +702,20 @@ int NvBufferMemSyncForCpu (int dmabuf_fd, unsigned int plane, void **pVirtAddr);
 * @returns 0 for success, -1 for failure.
 */
 int NvBufferMemSyncForDevice (int dmabuf_fd, unsigned int plane, void **pVirtAddr);
+
+/**
+* Syncs the hardware memory cache for the device, API to be used for another process.
+*
+* \sa NvBufferMemMapEx for the purpose of the function
+*
+* @param[in] dmabuf_fd DMABUF FD of buffer.
+* @param[in] exparams extended parameters for a hardware buffer.
+* @param[in] plane video frame plane.
+* @param[in] pVirtAddr Virtual Address pointer of the memory-mapped plane.
+*
+* @returns 0 for success, -1 for failure.
+*/
+int NvBufferMemSyncForDeviceEx (int dmabuf_fd, NvBufferParamsEx *exparams, unsigned int plane, void **pVirtAddr);
 
 /**
 * Gets the memory-mapped virtual address of the plane.
@@ -510,6 +741,30 @@ int NvBufferMemSyncForDevice (int dmabuf_fd, unsigned int plane, void **pVirtAdd
 int NvBufferMemMap (int dmabuf_fd, unsigned int plane, NvBufferMemFlags memflag, void **pVirtAddr);
 
 /**
+* Gets the memory-mapped virtual address of the plane, API to be used for another process.
+*
+* The client must call NvBufferMemSyncForCpuEx() with the virtual address returned
+* by this function before accessing the mapped memory in CPU in another process.
+*
+* After memory mapping is complete, mapped memory modification
+* must be coordinated between the CPU and hardware device as
+* follows:
+* - CPU: If the CPU modifies any mapped memory, the client must call
+*   NvBufferMemSyncForDeviceEx() before any hardware device accesses the memory.
+* - Hardware device: If the mapped memory is modified by any hardware device,
+*   the client must call NvBufferMemSyncForCpuEx() before CPU accesses the memory.
+*
+* @param[in] dmabuf_fd DMABUF FD of buffer.
+* @param[in] exparams extended parameters for a hardware buffer.
+* @param[in] plane video frame plane.(Applies to @ref NvBufferPayload_SurfArray.)
+* @param[in] memflag NvBuffer memory flag.
+* @param[out] pVirtAddr Virtual Address pointer of the memory-mapped plane.
+*
+* @returns 0 for success, -1 for failure.
+*/
+int NvBufferMemMapEx (int dmabuf_fd, NvBufferParamsEx *exparams, unsigned int plane, NvBufferMemFlags memflag, void **pVirtAddr);
+
+/**
 * Unmaps the mapped virtual address of the plane.
 *
 * If the following conditions are both true, the client must call
@@ -517,13 +772,32 @@ int NvBufferMemMap (int dmabuf_fd, unsigned int plane, NvBufferMemFlags memflag,
 * - Mapped memory was modified by the CPU.
 * - Mapped memory will be accessed by a hardware device.
 *
-* @param[in] dmabuf_fd DMABUF FD of buffer.
-* @param[in] plane video frame plane.(Applies to @ref NvBufferPayload_SurfArray.)
-* @param[in] pVirtAddr Memory-mapped Virtual Address pointer of the plane.
+* @param[in] dmabuf_fd  DMABUF FD of the buffer.
+* @param[in] plane      Video frame plane. Applies to
+*                       @ref NvBufferPayload_SurfArray.
+* @param[in] pVirtAddr  Virtual address pointer to the memory-mapped plane.
 *
 * @returns 0 for success, -1 for failure.
 */
 int NvBufferMemUnMap (int dmabuf_fd, unsigned int plane, void **pVirtAddr);
+
+/**
+* Unmaps the mapped virtual address of the plane, API to be used for another process.
+*
+* If the following conditions are both true, the client must call
+* NvBufferMemSyncForDeviceEx() before unmapping the memory in another process:
+* - Mapped memory was modified by the CPU.
+* - Mapped memory will be accessed by a hardware device.
+*
+* @param[in] dmabuf_fd  DMABUF FD of the buffer.
+* @param[in] exparams extended parameters for a hardware buffer.
+* @param[in] plane      Video frame plane. Applies to
+*                       @ref NvBufferPayload_SurfArray.
+* @param[in] pVirtAddr  Virtual address pointer to the memory-mapped plane.
+*
+* @returns 0 for success, -1 for failure.
+*/
+int NvBufferMemUnMapEx (int dmabuf_fd, NvBufferParamsEx *exparams, unsigned int plane, void **pVirtAddr);
 
 /**
 * Copies the NvBuffer plane contents to a raw buffer plane.
@@ -558,8 +832,8 @@ int Raw2NvBuffer (unsigned char *ptr, unsigned int plane, unsigned int in_width,
 NvBufferSession NvBufferSessionCreate(void);
 
 /**
-* Destroys an exisiting NvBufferSession.
-* @param[in] session An existing NvBufferSession.
+* Destroys an existing \ref NvBufferSession.
+* @param[in] session    An existing NvBufferSession.
 */
 void NvBufferSessionDestroy(NvBufferSession session);
 
@@ -575,13 +849,42 @@ void NvBufferSessionDestroy(NvBufferSession session);
 int NvBufferTransform (int src_dmabuf_fd, int dst_dmabuf_fd, NvBufferTransformParams *transform_params);
 
 /**
- * Composites multiple input DMA buffers to one output DMA buffer.
- * This function can support composition of multiple input frames to one composited output.
- * @param[in] src_dmabuf_fds array of DMABUF FDs of source buffers to composite from
- * @param[in] dst_dmabuf_fd DMABUF FD of destination buffer for composition
- * @param[in] composite_params composition parameters
+ * Transforms one DMA buffer to another DMA buffer, API to be used for another process.
+ * This function can support transforms for copying, scaling, fliping, rotating, and cropping.
+ * @param[in] src_dmabuf_fd DMABUF FD of source buffer
+ * @param[in] input_params extended input parameters for a hardware buffer.
+ * @param[in] dst_dmabuf_fd DMABUF FD of destination buffer
+ * @param[in] output_params extended output parameters for a hardware buffer.
+ * @param[in] transform_params transform parameters
  *
- * @return 0 for success, -1 for failure.
+ * @return 0 for sucess, -1 for failure.
+ */
+int NvBufferTransformEx (int src_dmabuf_fd, NvBufferParamsEx *input_params, int dst_dmabuf_fd, NvBufferParamsEx *output_params, NvBufferTransformParams *transform_params);
+
+/**
+ * Transforms one DMA buffer to another DMA buffer asyncroniously (non-blocking).
+ * This function can support transforms for copying, scaling, fliping, rotating, and cropping.
+ * @param[in] src_dmabuf_fd DMABUF FD of source buffer
+ * @param[in] dst_dmabuf_fd DMABUF FD of destination buffer
+ * @param[in] transform_params transform parameters
+ * @param[in] syncobj nvbuffer sync point object
+ *
+ * @return 0 for sucess, -1 for failure.
+ */
+int NvBufferTransformAsync (int src_dmabuf_fd, int dst_dmabuf_fd, NvBufferTransformParams *transform_params, NvBufferSyncObj *syncobj);
+
+
+/**
+ * \brief Composites multiple input DMA buffers to one output DMA buffer.
+ *
+ * This function can composite multiple input frames to one output.
+ *
+ * @param[in] src_dmabuf_fds    An array of DMABUF FDs of source buffers.
+ *                              These buffers are composited together. Output
+ *                              is copied to the output buffer referenced by
+ *                              @a dst_dmabuf_fd.
+ * @param[in] dst_dmabuf_fd     DMABUF FD of the compositing destination buffer.
+ * @param[in] composite_params  Compositing parameters.
  */
 int NvBufferComposite (int *src_dmabuf_fds, int dst_dmabuf_fd, NvBufferCompositeParams *composite_params);
 

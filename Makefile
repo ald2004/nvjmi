@@ -22,7 +22,7 @@ TARGET     := nvjmi
 
 #############################################
 # Gencode arguments
-SMS ?= 60 61 62 70 72 75
+SMS ?= 72 75 86
 
 ifeq ($(GENCODE_FLAGS),)
 # Generate SASS code for each SM architecture listed in $(SMS)
@@ -53,7 +53,7 @@ DEFS := _FILE_OFFSET_BITS=64 $(if $(findstring D,$(ENCYPT)), _USE_ENCYPTION_DONG
 #DEFS += FREEIMAGE_LIB
 
 ## need libs, add at here  
-LIBS := v4l2 nvbuf_utils tbb cudart
+LIBS := v4l2 nvbuf_utils tbb cudart nvbufsurface nvbufsurftransform
   
 ## used headers  file path  
 INCLUDE_PATH := ./ ./include ./converter ./cuda_utils ./image ./log ./utils /usr/local/cuda/include
@@ -118,6 +118,7 @@ default: all
 
 all: $(OBJS)
 	$(CPP) $(CXXFLAGS) -shared -o $(BUILDTARGET) $(OBJS) $(LDFLAGS)
+	$(CPP) -D_DEBUG -g -DDEBUG=1  main.cc -o boe -l$(TARGET) -I. -Iutils -L. -lavformat -lavutil -pthread
 
 clean:  
-	$(RM) $(OBJS) $(BUILDTARGET)
+	$(RM) $(OBJS) $(BUILDTARGET) boe

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -100,10 +100,12 @@ NvVideoEncoder::setOutputPlaneFormat(uint32_t pixfmt, uint32_t width,
     uint32_t num_bufferplanes;
     NvBuffer::NvBufferPlaneFormat planefmts[MAX_PLANES];
 
-    if (pixfmt != V4L2_PIX_FMT_YUV420M && pixfmt != V4L2_PIX_FMT_YUV444M &&
-        pixfmt != V4L2_PIX_FMT_P010M)
+    if (pixfmt != V4L2_PIX_FMT_YUV420M &&
+        pixfmt != V4L2_PIX_FMT_P010M && pixfmt != V4L2_PIX_FMT_NV12M &&
+        pixfmt != V4L2_PIX_FMT_NV24M && pixfmt != V4L2_PIX_FMT_NV24_10LE &&
+        pixfmt != V4L2_PIX_FMT_YUV444M)
     {
-        COMP_ERROR_MSG("Only YUV420M, YUV444M and P010M are supported");
+        COMP_ERROR_MSG("Only YUV420M, NV24, NV24_10LE, YUV444, P010M and NV12M are supported");
         return -1;
     }
 
@@ -136,6 +138,7 @@ NvVideoEncoder::setCapturePlaneFormat(uint32_t pixfmt, uint32_t width,
         case V4L2_PIX_FMT_H265:
         case V4L2_PIX_FMT_VP8:
         case V4L2_PIX_FMT_VP9:
+        case V4L2_PIX_FMT_AV1:
             capture_plane_pixfmt = pixfmt;
             break;
         default:
@@ -265,19 +268,13 @@ NvVideoEncoder::setProfile(uint32_t profile)
 }
 
 int
-NvVideoEncoder::setLevel(enum v4l2_mpeg_video_h264_level level)
+NvVideoEncoder::setLevel(uint32_t level)
 {
     struct v4l2_ext_control control;
     struct v4l2_ext_controls ctrls;
 
     RETURN_ERROR_IF_FORMATS_NOT_SET();
     RETURN_ERROR_IF_BUFFERS_REQUESTED();
-
-    if (capture_plane_pixfmt != V4L2_PIX_FMT_H264)
-    {
-        COMP_WARN_MSG("Currently only supported for H.264");
-        return 0;
-    }
 
     memset(&control, 0, sizeof(control));
     memset(&ctrls, 0, sizeof(ctrls));
@@ -286,17 +283,29 @@ NvVideoEncoder::setLevel(enum v4l2_mpeg_video_h264_level level)
     ctrls.controls = &control;
     ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
 
-    control.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL;
-    control.value = level;
+    switch (capture_plane_pixfmt)
+    {
+        case V4L2_PIX_FMT_H264:
+            control.id = V4L2_CID_MPEG_VIDEO_H264_LEVEL;
+            control.value = (enum v4l2_mpeg_video_h264_level)level;
+            break;
+        case V4L2_PIX_FMT_H265:
+            control.id = V4L2_CID_MPEG_VIDEOENC_H265_LEVEL;
+            control.value = (enum v4l2_mpeg_video_h265_level)level;
+            break;
+        default:
+            COMP_WARN_MSG("Currently only supported for H.264 and H.265");
+            return 0;
+    }
 
     CHECK_V4L2_RETURN(setExtControls(ctrls),
             "Setting encoder level to " << level);
 }
 
 int
-NvVideoEncoder::setConstantQp(int qp_value)
+NvVideoEncoder::setConstantQp(bool enabled_rc)
 {
-    struct v4l2_ext_control control[3];
+    struct v4l2_ext_control control;
     struct v4l2_ext_controls ctrls;
 
     RETURN_ERROR_IF_FORMATS_NOT_SET();
@@ -305,20 +314,15 @@ NvVideoEncoder::setConstantQp(int qp_value)
     memset(&control, 0, sizeof(control));
     memset(&ctrls, 0, sizeof(ctrls));
 
-    ctrls.count = 3;
-    ctrls.controls = &control[0];
+    ctrls.count = 1;
+    ctrls.controls = &control;
     ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
 
-    control[0].id = V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE;
-    control[0].value = 0; // disable rate control
+    control.id = V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE;
+    control.value = enabled_rc; // if false: disable rate control
 
-    control[1].id = V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP;
-    control[1].value = qp_value;
-
-    control[2].id = V4L2_CID_MPEG_VIDEO_H264_P_FRAME_QP;
-    control[2].value = qp_value;
     CHECK_V4L2_RETURN(setExtControls(ctrls),
-            "Setting encoder constant qp to " << qp_value);
+            "Setting encoder constant qp to " << enabled_rc);
 }
 
 int
@@ -648,6 +652,75 @@ NvVideoEncoder::enableExternalRC(v4l2_enc_enable_ext_rate_ctr &params)
 }
 
 int
+NvVideoEncoder::enableAV1Tile(v4l2_enc_av1_tile_config &params)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_AV1_TILE_CONFIGURATION;
+    control.string = (char *) &params;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Enabling encoder AV1 tile");
+}
+
+int
+NvVideoEncoder::setAV1SsimRdo(bool enabled)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_AV1_ENABLE_SSIMRDO;
+    control.value = enabled;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encoder Ssim Rdo to " << enabled);
+}
+
+int
+NvVideoEncoder::setAV1DisableCDFUpdate(bool disabled)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_AV1_DISABLE_CDF_UPDATE;
+    control.value = disabled;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encoder CDF update to " << !disabled);
+}
+
+int
 NvVideoEncoder::setVirtualBufferSize(uint32_t size)
 {
     struct v4l2_ext_control control;
@@ -766,6 +839,52 @@ NvVideoEncoder::setInsertSpsPpsAtIdrEnabled(bool enabled)
 }
 
 int
+NvVideoEncoder::setCABAC(bool enabled)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEO_H264_ENTROPY_MODE;
+    control.value = enabled;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encoder CABAC encoding to " << enabled);
+}
+
+int
+NvVideoEncoder::setSliceLevelEncode(bool enabled)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_ENABLE_SLICE_LEVEL_ENCODE;
+    control.value = enabled;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encode slice level encoding to " << enabled);
+}
+
+int
 NvVideoEncoder::enableMotionVectorReporting()
 {
     struct v4l2_ext_control control;
@@ -866,6 +985,74 @@ NvVideoEncoder::setQpRange(uint32_t MinQpI, uint32_t MaxQpI, uint32_t MinQpP,
 
     CHECK_V4L2_RETURN(setExtControls(ctrls),
             "Setting encoder Qp range " << ctrls.count);
+}
+
+int
+NvVideoEncoder::setSampleAspectRatioWidth(uint32_t sar_width)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    switch (capture_plane_pixfmt)
+    {
+        case V4L2_PIX_FMT_H264:
+            control.id = V4L2_CID_MPEG_VIDEO_H264_VUI_EXT_SAR_WIDTH;
+            break;
+        case V4L2_PIX_FMT_H265:
+            control.id = V4L2_CID_MPEG_VIDEOENC_H265_VUI_EXT_SAR_WIDTH;
+            break;
+        default:
+            COMP_ERROR_MSG("Unsupported encoder type");
+            return -1;
+    }
+    control.value = sar_width;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encoder SAR width to " << sar_width);
+}
+
+int
+NvVideoEncoder::setSampleAspectRatioHeight(uint32_t sar_height)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    switch (capture_plane_pixfmt)
+    {
+        case V4L2_PIX_FMT_H264:
+            control.id = V4L2_CID_MPEG_VIDEO_H264_VUI_EXT_SAR_HEIGHT;
+            break;
+        case V4L2_PIX_FMT_H265:
+            control.id = V4L2_CID_MPEG_VIDEOENC_H265_VUI_EXT_SAR_HEIGHT;
+            break;
+        default:
+            COMP_ERROR_MSG("Unsupported encoder type");
+            return -1;
+    }
+    control.value = sar_height;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encoder SAR width to " << sar_height);
 }
 
 int
@@ -1024,4 +1211,121 @@ NvVideoEncoder::ClearPollInterrupt()
 
     CHECK_V4L2_RETURN(setExtControls(ctrls),
             "Setting encoder poll interrupt to 0 ");
+}
+
+int
+NvVideoEncoder::setPocType(uint32_t pocType)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_POC_TYPE;
+    control.value = pocType;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting Pic_order_cnt_type to " << pocType);
+}
+
+int NvVideoEncoder::setInitQP(uint32_t IinitQP,
+            uint32_t PinitQP, uint32_t BinitQP)
+{
+    v4l2_ctrl_video_init_qp initqp;
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    initqp.IInitQP = IinitQP;
+    initqp.PInitQP = PinitQP;
+    initqp.BInitQP = BinitQP;
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_INIT_FRAME_QP;
+    control.string = (char *)&initqp;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting encoder Init QP " << ctrls.count);
+}
+
+int
+NvVideoEncoder::setFramesToEncode(uint32_t framesToEncode)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_FRAMES_TO_ENCODE;
+    control.value = framesToEncode;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting num_frames_to_encode to " << framesToEncode);
+}
+
+int
+NvVideoEncoder::setChromaFactorIDC(uint8_t value)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_H265_CHROMA_FACTOR_IDC;
+    control.value = value;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting chroma_format_idc to " << value);
+}
+
+int
+NvVideoEncoder::setLossless(bool enabled)
+{
+    struct v4l2_ext_control control;
+    struct v4l2_ext_controls ctrls;
+
+    RETURN_ERROR_IF_FORMATS_NOT_SET();
+    RETURN_ERROR_IF_BUFFERS_REQUESTED();
+
+    memset(&control, 0, sizeof(control));
+    memset(&ctrls, 0, sizeof(ctrls));
+
+    ctrls.count = 1;
+    ctrls.controls = &control;
+    ctrls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+
+    control.id = V4L2_CID_MPEG_VIDEOENC_ENABLE_LOSSLESS;
+    control.value = enabled;
+
+    CHECK_V4L2_RETURN(setExtControls(ctrls),
+            "Setting lossless encoding to " << enabled);
 }

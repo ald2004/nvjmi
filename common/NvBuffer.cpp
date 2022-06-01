@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2021, NVIDIA CORPORATION. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -420,6 +420,30 @@ NvBuffer::fill_buffer_plane_format(uint32_t *num_planes,
 
             planefmts[0].height = height;
             planefmts[1].height = height / 2;
+
+            planefmts[0].bytesperpixel = 2;
+            planefmts[1].bytesperpixel = 4;
+            break;
+        case V4L2_PIX_FMT_NV24M:
+            *num_planes = 2;
+
+            planefmts[0].width = width;
+            planefmts[1].width = width;
+
+            planefmts[0].height = height;
+            planefmts[1].height = height;
+
+            planefmts[0].bytesperpixel = 1;
+            planefmts[1].bytesperpixel = 2;
+            break;
+        case V4L2_PIX_FMT_NV24_10LE:
+            *num_planes = 2;
+
+            planefmts[0].width = width;
+            planefmts[1].width = width;
+
+            planefmts[0].height = height;
+            planefmts[1].height = height;
 
             planefmts[0].bytesperpixel = 2;
             planefmts[1].bytesperpixel = 4;

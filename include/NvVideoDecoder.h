@@ -225,6 +225,20 @@ public:
         v4l2_ctrl_videodec_inputbuf_metadata &input_metadata);
 
     /**
+     * Gets Sample Aspect Ratio (SAR) width and height for decoder.
+     *
+     * Calls the VIDIOC_G_EXT_CTRLS IOCTL internally with Control ID
+     * V4L2_CID_MPEG_VIDEODEC_SAR_WIDTH and V4L2_CID_MPEG_VIDEODEC_SAR_HEIGHT.
+     * Must be called after V4L2_EVENT_RESOLUTION_CHANGE is dequeued.
+     *
+     * @param[in,out] sar_width Reference to the SAR width to be filled.
+     * @param[in,out] sar_height Reference to the SAR height to be filled.
+     *
+     * @return 0 for success, -1 otherwise.
+     */
+    int getSAR(uint32_t &sar_width, uint32_t &sar_height);
+
+    /**
      * Issues Poll on the device which blocks until :
      * a) Either there is something to dequeue from capture or output plane or any events.
      * b) Poll was interrupted by a call to the device using V4L2_CID_SET_POLL_INTERRUPT
