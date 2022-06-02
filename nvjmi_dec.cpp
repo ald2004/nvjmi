@@ -1091,20 +1091,20 @@ cleanup:
         
         memset(&v4l2_buf, 0, sizeof(v4l2_buf));
         memset(planes, 0, sizeof(planes));
-
+        // nvBuffer = ctx->dec->output_plane.getNthBuffer(0);
         v4l2_buf.m.planes = planes;
-        v4l2_buf.index = 0;
+        // v4l2_buf.index = 0;
         // v4l2_buf.m.planes = planes;
-        v4l2_buf.m.planes[0].bytesused = nvBuffer->planes[0].bytesused;
+        // v4l2_buf.m.planes[0].bytesused = nvBuffer->planes[0].bytesused;
         
+        
+
+
         if ((ctx->index < (int)ctx->dec->output_plane.getNumBuffers())) {
-            // std::cout<<"111111111111111111111111111111111111"<<std::endl;
             nvBuffer = ctx->dec->output_plane.getNthBuffer(ctx->index);
         }
         else {
-            // std::cout<<"22222222222222"<<std::endl;
             ret = ctx->dec->output_plane.dqBuffer(v4l2_buf, &nvBuffer, NULL, -1);
-            
             if (ret < 0) {
                 TEST_ERROR(ret < 0, "Error DQing buffer at output plane", ret);
                 return NVJMI_ERROR_OUTPUT_PLANE_DQBUF;
@@ -1132,6 +1132,7 @@ cleanup:
 
         if (ctx->index < ctx->dec->output_plane.getNumBuffers())
             ctx->index++;
+        
         
         return NVJMI_OK;
     }
