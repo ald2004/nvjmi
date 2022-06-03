@@ -84,14 +84,14 @@ int main(){
             // Buffer buf;
             // buf.allocate(nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height);
             // jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf.getData());   ctx_->frames;
-            std::cout<< "got meta: ["<<
-              nvframe_meta.coded_height << "] " <<
-              nvframe_meta.coded_width <<"] " <<
-              nvframe_meta.frame_index <<"] " <<
-              nvframe_meta.height <<"] " <<
-              nvframe_meta.width <<"] " <<
-              nvframe_meta.payload_size <<"] " <<
-              nvframe_meta.timestamp << "] " <<std::endl; 
+            std::cout<< "got meta: \n coded_height["<<
+              nvframe_meta.coded_height << "] coded_width[" <<
+              nvframe_meta.coded_width <<"] frame_index[" <<
+              nvframe_meta.frame_index <<"] height[" <<
+              nvframe_meta.height <<"] width[" <<
+              nvframe_meta.width <<"] payload_size[" <<
+              nvframe_meta.payload_size <<"] timestamp[" <<
+              nvframe_meta.timestamp << "]." <<std::endl; 
               if (ret < 0) break;
         
         
@@ -109,7 +109,10 @@ int main(){
             // };
             // // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
             unsigned char* buf=(unsigned char*)malloc(1920* 1080*3*10);
-            jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);   
+            jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);  
+            // for(int p=0;p<1000;p++)
+            //     std::cout<< (int)buf[p] <<" ";
+            // std::cout<<std::endl; 
             free(buf);
             // LogInfo("now we get the packet size is:%d \n",packet->size);
             // break;

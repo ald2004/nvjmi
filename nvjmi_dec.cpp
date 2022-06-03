@@ -710,7 +710,7 @@ namespace jmi {
                 // }
                 
                 if(0){
-                    
+                    // if write to output file .
                 }else{
                     /* If not writing to file, Queue the buffer back once it has been used. */
                     if(ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
@@ -1141,7 +1141,7 @@ cleanup:
     JMI_API int nvjmi_decoder_get_frame_meta(nvJmiCtx* ctx, nvFrameMeta* frame_meta) {
         int ret{};
         int frame_index{-1};
-        std::cout<<" ------------- ctx frames is: ["<<ctx->frames->size()<<"]"<<std::endl;
+        // std::cout<<" ------------- ctx frames is: ["<<ctx->frames->size()<<"]"<<std::endl;
         if (ctx->dec->isInError()){
             return NVJMI_ERROR_DEC_INTERNAL;
         }
