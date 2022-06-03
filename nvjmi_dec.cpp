@@ -733,16 +733,17 @@ namespace jmi {
                 //get cuda pointer frm dma fd
                 // cudaEglFrame egl_frame = ctx->fd_egl_frame_map->get(ctx->dst_dma_fd);
 
-                // int buf_index{ -1 };
-                // while (!ctx->capture_plane_stop && !ctx->frame_pools->try_pop(buf_index)) {
-                //     std::this_thread::yield();
-                // }
+                int buf_index{ -1 };
+                while (!ctx->capture_plane_stop && !ctx->frame_pools->try_pop(buf_index)) {
+                    std::this_thread::yield();
+                }
+                
 
                 // if (!ctx->frame_size){
                 //     ctx->frame_size = ctx->resize_width*ctx->resize_height * 3 * sizeof(unsigned char);
                 // }
 
-                // if (!ctx->capture_plane_stop && (buf_index < MAX_BUFFERS && buf_index >= 0)) {
+                if (!ctx->capture_plane_stop && (buf_index < MAX_BUFFERS && buf_index >= 0)) {
                 //     if (ctx->frame_buffer[buf_index] == nullptr){
                 //         if (!cudaAllocMapped((void**)&ctx->frame_buffer[buf_index], ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
                 //             break;
@@ -760,15 +761,15 @@ namespace jmi {
                 //     cudaStreamSynchronize(ctx->cuda_stream);
 
                 //     ctx->timestamp[buf_index] = v4l2_buf.timestamp.tv_usec;
-                //     while (!ctx->capture_plane_stop && !ctx->frames->try_push(buf_index)) {
-                //         std::this_thread::yield();
-                //     }
-                // }
-                // else{
-                //     break;
-                // }
+                    while (!ctx->capture_plane_stop && !ctx->frames->try_push(buf_index)) {
+                        std::this_thread::yield();
+                    }
+                }
+                else{
+                    break;
+                }
 
-                // v4l2_buf.m.planes[0].m.fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
+                v4l2_buf.m.planes[0].m.fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
                 // if (ctx->dec->capture_plane.qBuffer(v4l2_buf, NULL) < 0){
                 //     ERROR_MSG("Error while queueing buffer at decoder capture plane");
                 // }
@@ -846,7 +847,7 @@ namespace jmi {
         ctx->output_plane_mem_type = V4L2_MEMORY_MMAP;
         ctx->capture_plane_mem_type = V4L2_MEMORY_DMABUF;
         ctx->enable_metadata=true;
-        ctx->enable_metadata=false;
+        // ctx->enable_metadata=false;
 
         pthread_mutex_init(&ctx->queue_lock, NULL);
         pthread_cond_init(&ctx->queue_cond, NULL);
@@ -1140,7 +1141,7 @@ cleanup:
     JMI_API int nvjmi_decoder_get_frame_meta(nvJmiCtx* ctx, nvFrameMeta* frame_meta) {
         int ret{};
         int frame_index{-1};
-
+        std::cout<<" ------------- ctx frames is: ["<<ctx->frames->size()<<"]"<<std::endl;
         if (ctx->dec->isInError()){
             return NVJMI_ERROR_DEC_INTERNAL;
         }

@@ -62,43 +62,58 @@ int main(){
     }
     jmi_ctx_param.coding_type = jmi::NV_VIDEO_CodingH264;
     std::string dec_name = "boedec";
-    jmi::nvJmiCtx *jmi_ctx_ = jmi::nvjmi_create_decoder(dec_name.data(), &jmi_ctx_param);
+    jmi::nvJmiCtx *jmi_ctx_ ;
+    jmi_ctx_= jmi::nvjmi_create_decoder(dec_name.data(), &jmi_ctx_param);
     jmi::nvPacket  nvpacket;
     while (av_read_frame(pFormatCtx, packet) >= 0) {
         nvpacket.payload_size = packet->size;
         nvpacket.payload = packet->data;
         int ret;
         ret = jmi::nvjmi_decoder_put_packet(jmi_ctx_, &nvpacket);
-        if (ret!=jmi::NVJMI_OK){
-            // std::cout<<"ret is:"<<ret<<std::endl<<std::fflush;
-            LogError("ret is: [%d]",ret);
-            break;
+        if(ret == jmi::NVJMI_ERROR_STOP) {
+            LogError("frameCallback: nvjmi decode error, frame callback EOF!");
         }
-        // if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY)
-        //     continue;
-        // if(ret == jmi::NVJMI_ERROR_STOP) {
-        //     LogInfo("nvjmi decode error, frame callback EOF!\n");
-        //     break;
-        // }
-        // jmi::nvFrameMeta nvframe_meta;
-        // ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
-        // if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY){
-        //     std::cout<<"empty frame!!!\n";
-        //     continue;
-        // }
-        // if (ret < 0) {
-        //     LogInfo("now we got errors :[%d]\n",ret);
-        //     std::cout<< "now nvframe_meta.height is: ["<<nvframe_meta.height<<"]"<<std::endl
-        //     <<"nvframe_meta.width is: ["<<nvframe_meta.width<<"] \n"<<std::fflush;
-        //     break;
-        // };
-        // // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
-        // unsigned char* buf=(unsigned char*)malloc(nvframe_meta.width* nvframe_meta.height*3*nvframe_meta.payload_size / nvframe_meta.height);
-        // jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);   
-        // free(buf);
-        // LogInfo("now we get the packet size is:%d \n",packet->size);
-        // break;
+
         
+        while (ret >= 0) {
+            jmi::nvFrameMeta nvframe_meta;
+            ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
+            // std::cout << "+++++++++++++["<<ret<<"]++++++++++++++++++"<<std::endl;
+            
+            
+            // Buffer buf;
+            // buf.allocate(nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height);
+            // jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf.getData());   ctx_->frames;
+            std::cout<< "got meta: ["<<
+              nvframe_meta.coded_height << "] " <<
+              nvframe_meta.coded_width <<"] " <<
+              nvframe_meta.frame_index <<"] " <<
+              nvframe_meta.height <<"] " <<
+              nvframe_meta.width <<"] " <<
+              nvframe_meta.payload_size <<"] " <<
+              nvframe_meta.timestamp << "] " <<std::endl; 
+              if (ret < 0) break;
+        
+        
+            // jmi::nvFrameMeta nvframe_meta;
+            // ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
+            // if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY){
+            //     std::cout<<"empty frame!!!\n";
+            //     continue;
+            // }
+            // if (ret < 0) {
+            //     LogInfo("now we got errors :[%d]\n",ret);
+            //     std::cout<< "now nvframe_meta.height is: ["<<nvframe_meta.height<<"]"<<std::endl
+            //     <<"nvframe_meta.width is: ["<<nvframe_meta.width<<"] \n"<<std::fflush;
+            //     break;
+            // };
+            // // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
+            unsigned char* buf=(unsigned char*)malloc(1920* 1080*3*10);
+            jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);   
+            free(buf);
+            // LogInfo("now we get the packet size is:%d \n",packet->size);
+            // break;
+        }
     }
     if (packet != nullptr) {
         av_free(packet);
