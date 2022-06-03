@@ -10,5 +10,6 @@
 
 关于解码API的使用，详见nvjmi.h接口说明。
 
-
+hardware : jetson orin
+jetpack version: nvidia-jetpack (5.0.1-b118) stable; urgency=low
 
