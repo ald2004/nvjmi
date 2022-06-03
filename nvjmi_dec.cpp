@@ -723,8 +723,8 @@ namespace jmi {
                         break;
                     }
                 }
-                
-                // dec_buffer->planes[0].fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
+                if (ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
+                    dec_buffer->planes[0].fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
 
                 // do vic conversion conversion: color map convert (NV12@res#1 --> RGBA packed) and scale
                 // ret = ctx->vic_converter->convert(dec_buffer->planes[0].fd, ctx->dst_dma_fd);        
@@ -946,7 +946,8 @@ namespace jmi {
         if (ctx->output_plane_mem_type == V4L2_MEMORY_MMAP) {
             /* configure decoder output plane for MMAP io-mode.
             Refer ioctl VIDIOC_REQBUFS, VIDIOC_QUERYBUF and VIDIOC_EXPBUF */
-            ret = ctx->dec->output_plane.setupPlane(V4L2_MEMORY_MMAP, 2, true, false);
+            ret = ctx->dec->output_plane.setupPlane(V4L2_MEMORY_MMAP, 1, true, false);
+            // ret = ctx->dec->output_plane.setupPlane(V4L2_MEMORY_MMAP, 2, true, false);
         } else if (ctx->output_plane_mem_type == V4L2_MEMORY_USERPTR) {
             /* configure decoder output plane for USERPTR io-mode.
             Refer ioctl VIDIOC_REQBUFS */
@@ -1095,7 +1096,8 @@ cleanup:
         // nvBuffer = ctx->dec->output_plane.getNthBuffer(0);
         v4l2_buf.m.planes = planes;
         // v4l2_buf.index = 0;
-        // v4l2_buf.m.planes = planes;
+        // nvBuffer->planes[0].bytesused=packet->payload_size;
+        // std::cout<<"aaaaaaaaaaaaaaaaaaaaaaa     "<<packet->payload_size<<std::endl;
         // v4l2_buf.m.planes[0].bytesused = nvBuffer->planes[0].bytesused;
         
         
