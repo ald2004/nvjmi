@@ -83,7 +83,7 @@ int main(){
             
             // Buffer buf;
             // buf.allocate(nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height);
-            // jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf.getData());   ctx_->frames;
+            // boe::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf.getData());   ctx_->frames;
             std::cout<< "got meta: \n coded_height["<<
               nvframe_meta.coded_height << "] coded_width[" <<
               nvframe_meta.coded_width <<"] frame_index[" <<
@@ -95,9 +95,9 @@ int main(){
               if (ret < 0) break;
         
         
-            // jmi::nvFrameMeta nvframe_meta;
-            // ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
-            // if(ret == jmi::NVJMI_ERROR_FRAMES_EMPTY){
+            // boe::nvFrameMeta nvframe_meta;
+            // ret = boe::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
+            // if(ret == boe::NVJMI_ERROR_FRAMES_EMPTY){
             //     std::cout<<"empty frame!!!\n";
             //     continue;
             // }
