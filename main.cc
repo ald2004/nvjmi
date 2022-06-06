@@ -55,29 +55,29 @@ int main(){
     pthread_setname_np(pthread_self(), "DecOutPlane");
     
 
-    jmi::nvJmiCtxParam jmi_ctx_param;
+    boe::nvJmiCtxParam jmi_ctx_param;
     if (width > 0 && height > 0) {
         jmi_ctx_param.resize_width = width;
         jmi_ctx_param.resize_height = height;
     }
-    jmi_ctx_param.coding_type = jmi::NV_VIDEO_CodingH264;
+    jmi_ctx_param.coding_type = boe::NV_VIDEO_CodingH264;
     std::string dec_name = "boedec";
-    jmi::nvJmiCtx *jmi_ctx_ ;
-    jmi_ctx_= jmi::nvjmi_create_decoder(dec_name.data(), &jmi_ctx_param);
-    jmi::nvPacket  nvpacket;
+    boe::nvJmiCtx *jmi_ctx_ ;
+    jmi_ctx_= boe::nvjmi_create_decoder(dec_name.data(), &jmi_ctx_param);
+    boe::nvPacket  nvpacket;
     while (av_read_frame(pFormatCtx, packet) >= 0) {
         nvpacket.payload_size = packet->size;
         nvpacket.payload = packet->data;
         int ret;
-        ret = jmi::nvjmi_decoder_put_packet(jmi_ctx_, &nvpacket);
-        if(ret == jmi::NVJMI_ERROR_STOP) {
+        ret = boe::nvjmi_decoder_put_packet(jmi_ctx_, &nvpacket);
+        if(ret == boe::NVJMI_ERROR_STOP) {
             LogError("frameCallback: nvjmi decode error, frame callback EOF!");
         }
 
         
         while (ret >= 0) {
-            jmi::nvFrameMeta nvframe_meta;
-            ret = jmi::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
+            boe::nvFrameMeta nvframe_meta;
+            ret = boe::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
             // std::cout << "+++++++++++++["<<ret<<"]++++++++++++++++++"<<std::endl;
             
             
@@ -109,7 +109,7 @@ int main(){
             // };
             // // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
             unsigned char* buf=(unsigned char*)malloc(1920* 1080*3*10);
-            jmi::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);  
+            boe::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);  
             // for(int p=0;p<1000;p++)
             //     std::cout<< (int)buf[p] <<" ";
             // std::cout<<std::endl; 

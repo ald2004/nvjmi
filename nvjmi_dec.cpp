@@ -22,7 +22,7 @@
 using namespace std;
 
 
-namespace jmi {
+namespace boe {
 
 // #define CHUNK_SIZE 1<<22
 #define CHUNK_SIZE 4000000

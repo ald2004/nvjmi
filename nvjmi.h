@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-namespace jmi {
+namespace boe {
     typedef struct nvJmiCtx nvJmiCtx;
 
     typedef enum{
