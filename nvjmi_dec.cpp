@@ -59,7 +59,7 @@ namespace boe {
         unsigned int frame_size{};
         int dst_dma_fd{-1};
         int numberCaptureBuffers{};
-        int dmaBufferFileDescriptor[MAX_BUFFERS]{};
+        // int dmaBufferFileDescriptor[MAX_BUFFERS]{};
         unsigned int decoder_pixfmt{};
         int blocking_mode;
         int max_perf;
@@ -206,6 +206,7 @@ namespace boe {
         ctx->fd_egl_frame_map->exit();
         
         // ctx->frame_pools->clear();
+        
         ctx->frames->clear();
 
         /* Not necessary to call VIDIOC_S_FMT on decoder capture plane.
@@ -650,12 +651,11 @@ namespace boe {
                 if (!ctx->capture_plane_stop && (buf_index < MAX_BUFFERS && buf_index >= 0)) {
                     if (ctx->frame_buffer[buf_index] == nullptr){
                         if (!cudaAllocMapped((void**)&ctx->frame_buffer[buf_index], 
-                        ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
-                            // std::cout<< "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"<<std::endl;
+                            ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
                             break;
-                        }
+                        }else  cudaStreamSynchronize(*ctx->cuda_stream);
+
                     }
-                    cudaStreamSynchronize(*ctx->cuda_stream);
 
                     // do CUDA conversion: RGBA packed@res#2 --> BGR planar@res#2
                     // std::cout<<egl_frame.frameType<<std::endl<<
@@ -1150,8 +1150,8 @@ cleanup:
         }
 
         for (int idx = 0; idx < pctx->numberCaptureBuffers; idx++) {
-            if (pctx->dmaBufferFileDescriptor[idx] != 0) {
-                int ret = NvBufferDestroy(pctx->dmaBufferFileDescriptor[idx]);
+            if (pctx->dmabuff_fd[idx] != 0) {
+                int ret = NvBufferDestroy(pctx->dmabuff_fd[idx]);
                 TEST_ERROR(ret < 0, "Failed to Destroy NvBuffer", ret);
             }
         }
