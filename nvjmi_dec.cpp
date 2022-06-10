@@ -662,9 +662,9 @@ namespace boe {
                         ctx->resize_height,
                         COLOR_FORMAT_BGR,
                         (void *)ctx->frame_buffer[buf_index],
-                        0);
+                        *ctx->cuda_stream);
 
-                //     cudaStreamSynchronize(ctx->cuda_stream);
+                    cudaStreamSynchronize(*ctx->cuda_stream);
 
                 //     ctx->timestamp[buf_index] = v4l2_buf.timestamp.tv_usec;
                     while (!ctx->capture_plane_stop && !ctx->frames->try_push(buf_index)) {
@@ -728,7 +728,7 @@ namespace boe {
         }
         LogInfo(LOG_NVJMI_DECODER "capture plane stopping ...\n");
     }
-
+    
     /*
     * NVJMI API
     */
@@ -891,13 +891,13 @@ namespace boe {
         ctx->fd_egl_frame_map = new FdEglFrameMap;
 
         //create cuda stream for cuda converter
-        // ctx->cuda_stream = new cudaStream_t;
-        // err = cudaStreamCreateWithFlags(ctx->cuda_stream, cudaStreamNonBlocking);
+        ctx->cuda_stream = new cudaStream_t;
+        err = cudaStreamCreateWithFlags(ctx->cuda_stream, cudaStreamNonBlocking);
         // std::cout<<"bbbbbbbbbbbbbbbbbbbbbbbbbbbb"<<std::endl;
-        // if (err != cudaSuccess) {
-        //     LogError(LOG_NVJMI_DECODER "cudaStreamCreateWithFlags: CUDA Runtime API error: %d - %s\n", (int)err, cudaGetErrorString(err));
-        //     return nullptr;
-        // }
+        if (err != cudaSuccess) {
+            LogError(LOG_NVJMI_DECODER "cudaStreamCreateWithFlags: CUDA Runtime API error: %d - %s\n", (int)err, cudaGetErrorString(err));
+            return nullptr;
+        }
 
         //create frame buffer pools
         ctx->frame_pools->set_capacity(MAX_BUFFERS);

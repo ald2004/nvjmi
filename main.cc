@@ -71,7 +71,7 @@ int main(){
     jmi_ctx_= boe::nvjmi_create_decoder(dec_name.data(), &jmi_ctx_param);
     boe::nvPacket  nvpacket;
     
-    while (av_read_frame(pFormatCtx, packet) >= 0) {
+    for (int i=0;av_read_frame(pFormatCtx, packet) >= 0 ;i++) {
         nvpacket.payload_size = packet->size;
         nvpacket.payload = packet->data;
         int ret;
@@ -118,7 +118,6 @@ int main(){
             // int imgsize =nvframe_meta.width * nvframe_meta.height*nvframe_meta.payload_size / nvframe_meta.height;
             // int imgsize =3110400;
             int imgsize=3110400*2;
-            std::cout << "img size is :["<<imgsize<<"]."<<std::endl;
             unsigned char* buf=(unsigned char*)malloc(imgsize);
             if(!buf){
                 LogError("exit app, buf is null .");
@@ -128,13 +127,14 @@ int main(){
             // for(int p=0;p<1000;p++)
             //     std::cout<< (int)buf[p] <<" ";
             // std::cout<<std::endl; 
-            cv::Mat img(nvframe_meta.coded_height,nvframe_meta.coded_width,CV_8UC3,buf);
+            if(!(i%10)){
+                cv::Mat img(nvframe_meta.coded_height,nvframe_meta.coded_width,CV_8UC3,buf);
+                // cv::Mat picYV12 = cv::Mat(nvframe_meta.height * 3/2, nvframe_meta.width, CV_8UC1, buf);
+                // cv::Mat picBGR;
+                // cv::cvtColor(picYV12,picBGR,cv::COLOR_YUV2BGR_YV12);
+                cv::imwrite("/dev/shm/img_"+get_uuid_32()+".jpg",img);
+            }
             
-
-            // cv::Mat picYV12 = cv::Mat(nvframe_meta.height * 3/2, nvframe_meta.width, CV_8UC1, buf);
-            // cv::Mat picBGR;
-            // cv::cvtColor(picYV12,picBGR,cv::COLOR_YUV2BGR_YV12);
-            cv::imwrite("/dev/shm/img_"+get_uuid_32()+".jpg",img);
 
             free(buf);
             // LogInfo("now we get the packet size is:%d \n",packet->size);
