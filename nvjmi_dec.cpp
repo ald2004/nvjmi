@@ -649,14 +649,19 @@ namespace boe {
 
                 if (!ctx->capture_plane_stop && (buf_index < MAX_BUFFERS && buf_index >= 0)) {
                     if (ctx->frame_buffer[buf_index] == nullptr){
-                        if (!cudaAllocMapped((void**)&ctx->frame_buffer[buf_index], ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
-                            std::cout<< "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"<<std::endl;
+                        if (!cudaAllocMapped((void**)&ctx->frame_buffer[buf_index], 
+                        ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
+                            // std::cout<< "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"<<std::endl;
                             break;
                         }
                     }
+                    cudaStreamSynchronize(*ctx->cuda_stream);
 
                     // do CUDA conversion: RGBA packed@res#2 --> BGR planar@res#2
-                    
+                    // std::cout<<egl_frame.frameType<<std::endl<<
+                    //     egl_frame.planeCount << std::endl<<
+                    //     ctx->resize_height <<std::endl<<
+                    //     ctx->resize_width << std::endl ;
                     ctx->cuda_converter->convert(egl_frame,
                         ctx->resize_width,
                         ctx->resize_height,
