@@ -56,9 +56,10 @@ DEFS := _FILE_OFFSET_BITS=64 $(if $(findstring D,$(ENCYPT)), _USE_ENCYPTION_DONG
 LIBS := v4l2 nvbuf_utils tbb cudart nvbufsurface nvbufsurftransform
   
 ## used headers  file path  
-INCLUDE_PATH := ./ ./include ./converter ./cuda_utils ./image ./log ./utils /usr/local/cuda/include
+INCLUDE_PATH := ./ ./include ./converter ./cuda_utils ./image ./log ./utils /usr/local/cuda/include /usr/include/opencv4
+#/opt/opencv_installed/include/opencv4
 
-#$(warning $(INCLUDE_PATH))
+$(warning $(INCLUDE_PATH))
 
 ## used include librarys file path  
 LIBRARY_PATH := /usr/lib/aarch64-linux-gnu/tegra /usr/local/cuda/targets/aarch64-linux/lib
@@ -115,10 +116,10 @@ default: all
 	$(NVCC) -m64 -std=c++11 $(foreach dir, $(INCLUDE_PATH), -I$(dir)) --default-stream per-thread $(GENCODE_FLAGS) -Xcompiler -fPIC -Xcompiler -O3 -c $< -o $@
 	#$(NVCC) -m64 -g -G -std=c++11 $(foreach dir, $(INCLUDE_PATH), -I$(dir)) --default-stream per-thread $(GENCODE_FLAGS) -Xcompiler -fPIC -c $< -o $@
 
-
+# -L/opt/opencv_installed/lib -lopencv_world 
 all: $(OBJS)
 	$(CPP) $(CXXFLAGS) -shared -o $(BUILDTARGET) $(OBJS) $(LDFLAGS)
-	$(CPP) -D_DEBUG -g -DDEBUG=1  main.cc -o boe -l$(TARGET) -I. -Iutils -L. -lavformat -lavutil -pthread
+	$(CPP) -D_DEBUG -g -DDEBUG=1  $(CXXFLAGS) main.cc -o boe -l$(TARGET) -I. -Iutils -L. -L/usr/local/cuda/lib64 -lavformat -lavutil -pthread -lcudart -lopencv_core -lopencv_videoio -lopencv_highgui -lopencv_imgcodecs
 
 clean:  
 	$(RM) $(OBJS) $(BUILDTARGET) boe

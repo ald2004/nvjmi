@@ -1,11 +1,11 @@
 ﻿#include "nvjmi.h"
 #include "./include/NvApplicationProfiler.h"
-#include "cudaMappedMemory.h"
+#include "cuda_utils/cudaMappedMemory.h"
 #include "logging.h"
 
-#include "vic_onverter.h"
-#include "cuda_converter.h"
-#include "fd_egl_frame_map.h"
+#include "converter/vic_onverter.h"
+#include "converter/cuda_converter.h"
+#include "converter/fd_egl_frame_map.h"
 #include "NvVideoDecoder.h"
 #include "nvbuf_utils.h"
 #include "NvBufSurface.h"
@@ -103,7 +103,7 @@ namespace boe {
         CUDAConverter * cuda_converter{};
         FdEglFrameMap * fd_egl_frame_map{};
 
-        cudaStream_t cuda_stream{};
+        cudaStream_t * cuda_stream;
     };
 
     /**
@@ -151,11 +151,17 @@ namespace boe {
         ret = dec->capture_plane.getCrop(crop);
         TEST_ERROR(ret < 0,
                 "Error: Could not get crop from decoder capture plane", error);
+        ctx->coded_width = crop.c.width;
+        ctx->coded_height = crop.c.height;
 
+        if (ctx->resize_width == 0 || ctx->resize_height == 0){
+            ctx->resize_width = ctx->coded_width;
+            ctx->resize_height = ctx->coded_height;
+        }
         cout << "Video Resolution: " << crop.c.width << "x" << crop.c.height
             << endl;
-        // ctx->display_height = crop.c.height;
-        // ctx->display_width = crop.c.width;
+        ctx->display_height = crop.c.height;
+        ctx->display_width = crop.c.width;
 
         /* Get the Sample Aspect Ratio (SAR) width and height */
         ret = dec->getSAR(sar_width, sar_height);
@@ -167,28 +173,40 @@ namespace boe {
             TEST_ERROR(ret < 0, "Error: Error in BufferDestroy", error);
         }
         /* Create PitchLinear output buffer for transform. */
-        params.memType = NVBUF_MEM_SURFACE_ARRAY;
-        params.width = crop.c.width;
-        params.height = crop.c.height;
-        params.layout = NVBUF_LAYOUT_PITCH;
-        params.colorFormat = NVBUF_COLOR_FORMAT_NV12;
-        params.memtag = NvBufSurfaceTag_VIDEO_CONVERT;
-        ret = NvBufSurf::NvAllocate(&params, 1, &ctx->dst_dma_fd);
-        TEST_ERROR(ret == -1, "create dmabuf failed", error);
+        // params.memType = NVBUF_MEM_SURFACE_ARRAY;
+        // params.width = crop.c.width;
+        // params.height = crop.c.height;
+        // params.layout = NVBUF_LAYOUT_PITCH;
+        // if (ctx->out_pixfmt == 1)
+        // params.colorFormat = NVBUF_COLOR_FORMAT_NV12;
+        // else if (ctx->out_pixfmt == 2)
+        // params.colorFormat = NVBUF_COLOR_FORMAT_YUV420;
+        // else if (ctx->out_pixfmt == 3)
+        // params.colorFormat = NVBUF_COLOR_FORMAT_NV16;
+        // else if (ctx->out_pixfmt == 4)
+        // params.colorFormat = NVBUF_COLOR_FORMAT_NV24;
+
+        // params.memtag = NvBufSurfaceTag_VIDEO_CONVERT;
+
+        // ret = NvBufSurf::NvAllocate(&params, 1, &ctx->dst_dma_fd);
+        // TEST_ERROR(ret == -1, "create dmabuf failed", error);
 
         /* deinitPlane unmaps the buffers and calls REQBUFS with count 0 */
         dec->capture_plane.deinitPlane();
-        if(ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
-        {
-            for(int index = 0 ; index < ctx->numCapBuffers ; index++)
-            {
-                if(ctx->dmabuff_fd[index] != 0)
-                {
+        if(1||ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF){
+            for(int index = 0 ; index < ctx->numCapBuffers ; index++){
+                if(ctx->dmabuff_fd[index] != 0){
                     ret = NvBufSurf::NvDestroy(ctx->dmabuff_fd[index]);
                     TEST_ERROR(ret < 0, "Error: Error in BufferDestroy", error);
                 }
             }
         }
+       
+        ctx->vic_converter->exit();
+        ctx->fd_egl_frame_map->exit();
+        
+        // ctx->frame_pools->clear();
+        ctx->frames->clear();
 
         /* Not necessary to call VIDIOC_S_FMT on decoder capture plane.
         But decoder setCapturePlaneFormat function updates the class variables */
@@ -202,10 +220,8 @@ namespace boe {
         /* Get the minimum buffers which have to be requested on the capture plane. */
         ret = dec->getMinimumCapturePlaneBuffers(min_dec_capture_buffers);
         
-        TEST_ERROR(ret < 0,
-                "Error while getting value of minimum capture plane buffers",
-                error);
-
+        TEST_ERROR(ret < 0,"Error while getting value of minimum capture plane buffers",error);
+        // ctx->numberCaptureBuffers = min_dec_capture_buffers + 5;
         /* Request (min + extra) buffers, export and map buffers. */
         if(ctx->capture_plane_mem_type == V4L2_MEMORY_MMAP)
         {
@@ -292,8 +308,15 @@ namespace boe {
                 }
             }
 
-            capParams.colorFormat = pix_format;
 
+
+
+
+            
+            /** Specifies BT.601 colorspace - Y/CbCr 4:2:0 multi-planar. NVBUF_COLOR_FORMAT_NV12, */
+            capParams.colorFormat = pix_format;
+            
+            // ret = NvBufferCreateEx(&ctx->dmaBufferFileDescriptor[idx], &capture_params);
             ret = NvBufSurf::NvAllocate(&capParams, ctx->numCapBuffers, ctx->dmabuff_fd);
 
             TEST_ERROR(ret < 0, "Failed to create buffers", error);
@@ -302,149 +325,11 @@ namespace boe {
             ret = dec->capture_plane.reqbufs(V4L2_MEMORY_DMABUF,ctx->numCapBuffers);
             TEST_ERROR(ret, "Error in request buffers on capture plane", error);
         }
-
-        /* Decoder capture plane STREAMON.
-        Refer ioctl VIDIOC_STREAMON */
-        ret = dec->capture_plane.setStreamStatus(true);
-        TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", error);
-
-        /* Enqueue all the empty decoder capture plane buffers. */
-        for (uint32_t i = 0; i < dec->capture_plane.getNumBuffers(); i++)
-        {
-            struct v4l2_buffer v4l2_buf;
-            struct v4l2_plane planes[MAX_PLANES];
-
-            memset(&v4l2_buf, 0, sizeof(v4l2_buf));
-            memset(planes, 0, sizeof(planes));
-
-            v4l2_buf.index = i;
-            v4l2_buf.m.planes = planes;
-            v4l2_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            v4l2_buf.memory = ctx->capture_plane_mem_type;
-            if(ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
-                v4l2_buf.m.planes[0].m.fd = ctx->dmabuff_fd[i];
-            ret = dec->capture_plane.qBuffer(v4l2_buf, NULL);
-            TEST_ERROR(ret < 0, "Error Qing buffer at output plane", error);
-        }
-        cout << "Query and set capture successful" << endl;
-        return;
-
-    error:
-        if (error)
-        {
-            abort(ctx);
-            cerr << "Error in " << __func__ << endl;
-        }
-    }
-
-    void respondToResolutionEvent(v4l2_format &format, v4l2_crop &crop, nvJmiCtx* ctx){
-        int32_t minimumDecoderCaptureBuffers{};
-        int ret{};
-
-        // Get capture plane format from the decoder. This may change after an resolution change event
-        ret = ctx->dec->capture_plane.getFormat(format);
-        TEST_ERROR(ret < 0, "Error: Could not get format from decoder capture plane", ret);
-      
-        // Get the video resolution from the decoder
-        ret = ctx->dec->capture_plane.getCrop(crop);
-        TEST_ERROR(ret < 0, "Error: Could not get crop from decoder capture plane", ret);
-
-        ctx->coded_width = crop.c.width;
-        ctx->coded_height = crop.c.height;
-
-        if (ctx->resize_width == 0 || ctx->resize_height == 0){
-            ctx->resize_width = ctx->coded_width;
-            ctx->resize_height = ctx->coded_height;
-        }
-
-        //destroy pre-created capture_plane, dma buffer, egl_frame
-        if (ctx->dst_dma_fd != -1) {
-            NvBufferDestroy(ctx->dst_dma_fd);
-            ctx->dst_dma_fd = -1;
-        }
-
-        ctx->dec->capture_plane.deinitPlane();
-        for (int idx = 0; idx < ctx->numberCaptureBuffers; idx++) {
-            if (ctx->dmaBufferFileDescriptor[idx] != 0) {
-                ret = NvBufferDestroy(ctx->dmaBufferFileDescriptor[idx]);
-                TEST_ERROR(ret < 0, "Failed to Destroy NvBuffer", ret);
-            }
-        }
-
-        ctx->vic_converter->exit();
-        ctx->fd_egl_frame_map->exit();
-
-        ctx->frame_pools->clear();
-        ctx->frames->clear();
-        //end destroy
-
-        ret = ctx->dec->setCapturePlaneFormat(format.fmt.pix_mp.pixelformat, format.fmt.pix_mp.width, format.fmt.pix_mp.height);
-        TEST_ERROR(ret < 0, "Error in setting decoder capture plane format", ret);
-
-        ctx->dec->getMinimumCapturePlaneBuffers(minimumDecoderCaptureBuffers);
-        TEST_ERROR(ret < 0, "Error while getting value of minimum capture plane buffers", ret);
-
-        ctx->numberCaptureBuffers = minimumDecoderCaptureBuffers + 5;
-
-        NvBufferCreateParams capture_params{};
-        switch (format.fmt.pix_mp.colorspace) {
-        case V4L2_COLORSPACE_SMPTE170M:
-        {
-            if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT) {
-                // "Decoder colorspace ITU-R BT.601 with standard range luma (16-235)"
-                capture_params.colorFormat = NvBufferColorFormat_NV12;
-            }
-            else {
-                //"Decoder colorspace ITU-R BT.601 with extended range luma (0-255)";
-                capture_params.colorFormat = NvBufferColorFormat_NV12_ER;
-            }
-        } break;
-        case V4L2_COLORSPACE_REC709:
-        {
-            if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT) {
-                //"Decoder colorspace ITU-R BT.709 with standard range luma (16-235)";
-                capture_params.colorFormat = NvBufferColorFormat_NV12_709;
-            }
-            else {
-                //"Decoder colorspace ITU-R BT.709 with extended range luma (0-255)";
-                capture_params.colorFormat = NvBufferColorFormat_NV12_709_ER;
-            }
-        } break;
-        case V4L2_COLORSPACE_BT2020:
-        {
-            //"Decoder colorspace ITU-R BT.2020";
-            capture_params.colorFormat = NvBufferColorFormat_NV12_2020;
-        } break;
-        default:
-        {
-            if (format.fmt.pix_mp.quantization == V4L2_QUANTIZATION_DEFAULT) {
-                //"Decoder colorspace ITU-R BT.601 with standard range luma (16-235)";
-                capture_params.colorFormat = NvBufferColorFormat_NV12;
-            }
-            else {
-                //"Decoder colorspace ITU-R BT.601 with extended range luma (0-255)";
-                capture_params.colorFormat = NvBufferColorFormat_NV12_ER;
-            }
-        } break;
-        }
-
-        //create decoded framed dma fd
-        for (int idx = 0; idx < ctx->numberCaptureBuffers; idx++) {
-            capture_params.width = crop.c.width;
-            capture_params.height = crop.c.height;
-            capture_params.layout = NvBufferLayout_BlockLinear;
-            capture_params.payloadType = NvBufferPayload_SurfArray;
-            capture_params.nvbuf_tag = NvBufferTag_VIDEO_DEC;
-
-            ret = NvBufferCreateEx(&ctx->dmaBufferFileDescriptor[idx], &capture_params);
-            TEST_ERROR(ret < 0, "Failed to create buffers", ret);
-        }
-
-        ctx->frame_pools->set_capacity(ctx->numberCaptureBuffers);
-        ctx->frames->set_capacity(ctx->numberCaptureBuffers);
-        for (int i = 0; i < ctx->numberCaptureBuffers; ++i){
-            ctx->frame_pools->push(i);
-        }
+        // ctx->frame_pools->set_capacity(ctx->numCapBuffers);
+        ctx->frames->set_capacity(ctx->numCapBuffers);
+        // for (int i = 0; i < ctx->numCapBuffers; ++i){
+        //     ctx->frame_pools->push(i);
+        // }
 
         NvBufferRect src_rect;
         src_rect.top = 0; //top和left均为0，则为scale；否则为crop
@@ -479,13 +364,14 @@ namespace boe {
         ctx->vic_converter->init(src_rect, dst_rect);
         ctx->fd_egl_frame_map->init();
 
-        ctx->dec->capture_plane.reqbufs(V4L2_MEMORY_DMABUF, ctx->numberCaptureBuffers);
-        TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", ret);
+        /* Decoder capture plane STREAMON.
+        Refer ioctl VIDIOC_STREAMON */
+        ret = dec->capture_plane.setStreamStatus(true);
+        TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", error);
 
-        ctx->dec->capture_plane.setStreamStatus(true);
-        TEST_ERROR(ret < 0, "Error in decoder capture plane streamon", ret);
-
-        for (uint32_t i = 0; i < ctx->dec->capture_plane.getNumBuffers(); i++) {
+        /* Enqueue all the empty decoder capture plane buffers. */
+        for (uint32_t i = 0; i < dec->capture_plane.getNumBuffers(); i++)
+        {
             struct v4l2_buffer v4l2_buf;
             struct v4l2_plane planes[MAX_PLANES];
 
@@ -495,16 +381,26 @@ namespace boe {
             v4l2_buf.index = i;
             v4l2_buf.m.planes = planes;
             v4l2_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            v4l2_buf.memory = V4L2_MEMORY_DMABUF;
-            v4l2_buf.m.planes[0].m.fd = ctx->dmaBufferFileDescriptor[i];
-
-            ret = ctx->dec->capture_plane.qBuffer(v4l2_buf, NULL);
-            TEST_ERROR(ret < 0, "Error Qing buffer at output plane", ret);
+            // v4l2_buf.memory = ctx->capture_plane_mem_type;
+            v4l2_buf.memory = V4L2_MEMORY_DMABUF; 
+            v4l2_buf.m.planes[0].m.fd = ctx->dmabuff_fd[i];   
+            // if(ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
+                v4l2_buf.m.planes[0].m.fd = ctx->dmabuff_fd[i];
+            ret = dec->capture_plane.qBuffer(v4l2_buf, NULL);
+            TEST_ERROR(ret < 0, "Error Qing buffer at output plane", error);
         }
+        cout << "Query and set capture successful" << endl;
+        return;
 
-        ctx->got_res_event = true;
+    error:
+        if (error)
+        {
+            abort(ctx);
+            cerr << "Error in " << __func__ << endl;
+        }
     }
-    
+
+
     /**
      * Report decoder output metadata.
      *
@@ -663,7 +559,7 @@ namespace boe {
 
             // while (!ctx->capture_plane_stop) 
             /* Decoder capture loop */
-            while(1){
+            while(!ctx->capture_plane_stop){
                 struct v4l2_buffer v4l2_buf;
                 struct v4l2_plane planes[MAX_PLANES];
                 memset(&v4l2_buf, 0, sizeof(v4l2_buf));
@@ -672,11 +568,11 @@ namespace boe {
                 /* Dequeue a filled buffer. */
                 if (ctx->dec->capture_plane.dqBuffer(v4l2_buf, &dec_buffer, NULL, 0)){
                     if (errno == EAGAIN) {
-                        // if (ctx->output_plane_stop) {
-                        //     ctx->capture_plane_stop = true;
-                        //     LogInfo(LOG_NVJMI_DECODER "capture plane set stopped\n");
-                        // }
-                        // usleep(1000);
+                        if (ctx->output_plane_stop) {
+                            ctx->capture_plane_stop = true;
+                            LogInfo(LOG_NVJMI_DECODER "capture plane set stopped\n");
+                        }
+                        usleep(1000);
                         if (v4l2_buf.flags & V4L2_BUF_FLAG_LAST){
                             cout << "Got EoS at capture plane" << endl;
                             goto handle_eos;
@@ -704,7 +600,7 @@ namespace boe {
                     }
                 }
                 
-                // if (ctx->copy_timestamp && ctx->input_nalu && ctx->stats){
+                // if (ctx->copy_timestamp 
                 //     cout << "[" << v4l2_buf.index << "]" "dec capture plane dqB timestamp [" <<
                 //     v4l2_buf.timestamp.tv_sec << "s" << v4l2_buf.timestamp.tv_usec << "us]" << endl;
                 // }
@@ -713,8 +609,8 @@ namespace boe {
                     // if write to output file .
                 }else{
                     /* If not writing to file, Queue the buffer back once it has been used. */
-                    if(ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
-                        v4l2_buf.m.planes[0].m.fd = ctx->dmabuff_fd[v4l2_buf.index];
+                    // if(ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
+                    v4l2_buf.m.planes[0].m.fd = ctx->dmabuff_fd[v4l2_buf.index];
                     if (dec->capture_plane.qBuffer(v4l2_buf, NULL) < 0){
                         abort(ctx);
                         cerr <<
@@ -724,39 +620,49 @@ namespace boe {
                     }
                 }
                 if (ctx->capture_plane_mem_type == V4L2_MEMORY_DMABUF)
-                    dec_buffer->planes[0].fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
+                dec_buffer->planes[0].fd = ctx->dmabuff_fd[v4l2_buf.index];
+                    // dec_buffer->planes[0].fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
 
                 // do vic conversion conversion: color map convert (NV12@res#1 --> RGBA packed) and scale
-                // ret = ctx->vic_converter->convert(dec_buffer->planes[0].fd, ctx->dst_dma_fd);        
-                // TEST_ERROR(ret == -1, "Transform failed", ret);
+                ret = ctx->vic_converter->convert(dec_buffer->planes[0].fd, ctx->dst_dma_fd);        
+                TEST_ERROR(ret == -1, "Transform failed", ret);
 
-                //get cuda pointer frm dma fd
-                // cudaEglFrame egl_frame = ctx->fd_egl_frame_map->get(ctx->dst_dma_fd);
+                //get cuda pointer frm dma fd 1075
+                // std::cout<<"mmmmmmmmmmmmmmmmmmmmmmmmmm " <<ctx->dst_dma_fd<<std::endl;
+                cudaEglFrame egl_frame = ctx->fd_egl_frame_map->get(ctx->dst_dma_fd);
 
                 int buf_index{ -1 };
+                // std::cout << "dddddddddddddddddddddd ["<<ctx->frame_pools->size()<<"]" <<std::endl;
+
                 while (!ctx->capture_plane_stop && !ctx->frame_pools->try_pop(buf_index)) {
+                    // std::cout << "cccccccccccccccccccccccccccccc ["<<buf_index<<"]" <<std::endl;
                     std::this_thread::yield();
                 }
                 
+                if (!ctx->frame_size){
+                    // std::cout << "ddddddddddddddddddddddddddd ["<<ctx->frame_size<<"]" <<std::endl;//0
+                    ctx->frame_size = (int)(ctx->resize_width*ctx->resize_height * 3 * sizeof(unsigned char));
+                    // std::cout << "ddddddddddddddddddddddddddd ["<<ctx->frame_size<<"]" <<std::endl; //6220800
 
-                // if (!ctx->frame_size){
-                //     ctx->frame_size = ctx->resize_width*ctx->resize_height * 3 * sizeof(unsigned char);
-                // }
+                    // ctx->frame_size =3110400;
+                }
 
                 if (!ctx->capture_plane_stop && (buf_index < MAX_BUFFERS && buf_index >= 0)) {
-                //     if (ctx->frame_buffer[buf_index] == nullptr){
-                //         if (!cudaAllocMapped((void**)&ctx->frame_buffer[buf_index], ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
-                //             break;
-                //         }
-                //     }
+                    if (ctx->frame_buffer[buf_index] == nullptr){
+                        if (!cudaAllocMapped((void**)&ctx->frame_buffer[buf_index], ctx->resize_width, ctx->resize_height, imageFormat::IMAGE_BGR8)) {
+                            std::cout<< "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh"<<std::endl;
+                            break;
+                        }
+                    }
 
-                //     // do CUDA conversion: RGBA packed@res#2 --> BGR planar@res#2
-                //     ctx->cuda_converter->convert(egl_frame,
-                //         ctx->resize_width,
-                //         ctx->resize_height,
-                //         COLOR_FORMAT_BGR,
-                //         (void *)ctx->frame_buffer[buf_index],
-                //         ctx->cuda_stream);
+                    // do CUDA conversion: RGBA packed@res#2 --> BGR planar@res#2
+                    
+                    ctx->cuda_converter->convert(egl_frame,
+                        ctx->resize_width,
+                        ctx->resize_height,
+                        COLOR_FORMAT_BGR,
+                        (void *)ctx->frame_buffer[buf_index],
+                        0);
 
                 //     cudaStreamSynchronize(ctx->cuda_stream);
 
@@ -769,7 +675,7 @@ namespace boe {
                     break;
                 }
 
-                v4l2_buf.m.planes[0].m.fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
+                // v4l2_buf.m.planes[0].m.fd = ctx->dmaBufferFileDescriptor[v4l2_buf.index];
                 // if (ctx->dec->capture_plane.qBuffer(v4l2_buf, NULL) < 0){
                 //     ERROR_MSG("Error while queueing buffer at decoder capture plane");
                 // }
@@ -835,8 +741,6 @@ namespace boe {
 
         //create nvjmi context
         nvJmiCtx* ctx = new nvJmiCtx;
-        ctx->output_plane_mem_type = V4L2_MEMORY_MMAP;
-        ctx->capture_plane_mem_type = V4L2_MEMORY_DMABUF;
         ctx->resize_width = param->resize_width;
         ctx->resize_height = param->resize_height;
         ctx->stress_test = 1;
@@ -847,7 +751,8 @@ namespace boe {
         ctx->output_plane_mem_type = V4L2_MEMORY_MMAP;
         ctx->capture_plane_mem_type = V4L2_MEMORY_DMABUF;
         ctx->enable_metadata=true;
-        // ctx->enable_metadata=false;
+        ctx->extra_cap_plane_buffer =5;
+        ctx->enable_metadata=false;
 
         pthread_mutex_init(&ctx->queue_lock, NULL);
         pthread_cond_init(&ctx->queue_cond, NULL);
@@ -986,7 +891,9 @@ namespace boe {
         ctx->fd_egl_frame_map = new FdEglFrameMap;
 
         //create cuda stream for cuda converter
-        // err = cudaStreamCreateWithFlags(&ctx->cuda_stream, cudaStreamNonBlocking);
+        // ctx->cuda_stream = new cudaStream_t;
+        // err = cudaStreamCreateWithFlags(ctx->cuda_stream, cudaStreamNonBlocking);
+        // std::cout<<"bbbbbbbbbbbbbbbbbbbbbbbbbbbb"<<std::endl;
         // if (err != cudaSuccess) {
         //     LogError(LOG_NVJMI_DECODER "cudaStreamCreateWithFlags: CUDA Runtime API error: %d - %s\n", (int)err, cudaGetErrorString(err));
         //     return nullptr;
@@ -1000,7 +907,7 @@ namespace boe {
         for (int i = 0; i < MAX_BUFFERS; ++i){
             ctx->frame_pools->push(i);
         }
-        std::cout<< "init ctx complete!\n";
+        std::cout<< "init ctx complete! ["<<ctx->frame_pools->size()<<"]"<<std::endl;;
         return ctx;
 cleanup:
         // if (ctx->blocking_mode && ctx->dec_capture_loop){
@@ -1182,6 +1089,9 @@ cleanup:
 
     JMI_API int nvjmi_decoder_retrieve_frame_data(nvJmiCtx* ctx, nvFrameMeta* frame_meta, void* frame_data){
         if (frame_data){
+            if(ctx->frame_buffer[frame_meta->frame_index]==NULL){
+
+            }else
             memcpy((unsigned char*)frame_data, ctx->frame_buffer[frame_meta->frame_index], frame_meta->payload_size);
             frame_meta->got_data = 1;
         }

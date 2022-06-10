@@ -4,6 +4,10 @@
 
 #include "nvjmi.h"
 #include "log/logging.h"
+#include "utils/utils_uuid.h"
+#include <opencv2/opencv.hpp>
+// #include <cuda_runtime_api.h>
+// #include <thread>
 #ifdef _WIN32
 //Windows
 extern "C" {
@@ -26,6 +30,7 @@ extern "C"
 };
 #endif
 #endif
+
 int main(){
     AVFormatContext *pFormatCtx;
     AVPacket *packet;
@@ -65,6 +70,7 @@ int main(){
     boe::nvJmiCtx *jmi_ctx_ ;
     jmi_ctx_= boe::nvjmi_create_decoder(dec_name.data(), &jmi_ctx_param);
     boe::nvPacket  nvpacket;
+    
     while (av_read_frame(pFormatCtx, packet) >= 0) {
         nvpacket.payload_size = packet->size;
         nvpacket.payload = packet->data;
@@ -78,12 +84,14 @@ int main(){
         while (ret >= 0) {
             boe::nvFrameMeta nvframe_meta;
             ret = boe::nvjmi_decoder_get_frame_meta(jmi_ctx_, &nvframe_meta);
+            if (ret < 0) continue;
             // std::cout << "+++++++++++++["<<ret<<"]++++++++++++++++++"<<std::endl;
             
             
             // Buffer buf;
             // buf.allocate(nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height);
             // boe::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf.getData());   ctx_->frames;
+            // if(nvframe_meta.frame_index<0)continue;
             std::cout<< "got meta: \n coded_height["<<
               nvframe_meta.coded_height << "] coded_width[" <<
               nvframe_meta.coded_width <<"] frame_index[" <<
@@ -92,7 +100,6 @@ int main(){
               nvframe_meta.width <<"] payload_size[" <<
               nvframe_meta.payload_size <<"] timestamp[" <<
               nvframe_meta.timestamp << "]." <<std::endl; 
-              if (ret < 0) break;
         
         
             // boe::nvFrameMeta nvframe_meta;
@@ -108,11 +115,27 @@ int main(){
             //     break;
             // };
             // // unsigned char* buf= new unsigned char[nvframe_meta.width, nvframe_meta.height, 3, nvframe_meta.payload_size / nvframe_meta.height];
-            unsigned char* buf=(unsigned char*)malloc(1920* 1080*3*10);
+            // int imgsize =nvframe_meta.width * nvframe_meta.height*nvframe_meta.payload_size / nvframe_meta.height;
+            // int imgsize =3110400;
+            int imgsize=3110400*2;
+            std::cout << "img size is :["<<imgsize<<"]."<<std::endl;
+            unsigned char* buf=(unsigned char*)malloc(imgsize);
+            if(!buf){
+                LogError("exit app, buf is null .");
+            }
+            // memset(buf,0,imgsize);
             boe::nvjmi_decoder_retrieve_frame_data(jmi_ctx_, &nvframe_meta, (void*)buf);  
             // for(int p=0;p<1000;p++)
             //     std::cout<< (int)buf[p] <<" ";
             // std::cout<<std::endl; 
+            cv::Mat img(nvframe_meta.coded_height,nvframe_meta.coded_width,CV_8UC3,buf);
+            
+
+            // cv::Mat picYV12 = cv::Mat(nvframe_meta.height * 3/2, nvframe_meta.width, CV_8UC1, buf);
+            // cv::Mat picBGR;
+            // cv::cvtColor(picYV12,picBGR,cv::COLOR_YUV2BGR_YV12);
+            cv::imwrite("/dev/shm/img_"+get_uuid_32()+".jpg",img);
+
             free(buf);
             // LogInfo("now we get the packet size is:%d \n",packet->size);
             // break;
@@ -122,3 +145,4 @@ int main(){
         av_free(packet);
     }
 }
+
